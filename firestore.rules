@@ -1,0 +1,60 @@
+rules_version = '2';
+
+// Notes — Firestore security rules for project notes-f36b3.
+//
+// Paste into Firebase Console -> Firestore Database -> Rules -> Publish.
+// (The firebase CLI is not installed, so there is no `firebase deploy` step.)
+//
+// Layout is users/{uid}/notes/{noteId}: ownership lives in the PATH, so it is
+// checked before any document is read, one expression covers create/update/
+// delete, and forgetting an ownership filter in a query is impossible. A flat
+// notes/{id} + ownerId collection would need two different rule expressions
+// (request.resource.data on create, resource.data on update) and a composite
+// index for the newest-first query.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Everything not matched below is denied.
+
+    match /users/{userId}/notes/{noteId} {
+
+      allow read: if isOwner(userId);
+
+      allow create: if isOwner(userId)
+                    && isValidNote()
+                    && request.resource.data.createdAt == request.time
+                    && request.resource.data.updatedAt == request.time;
+
+      allow update: if isOwner(userId)
+                    && isValidNote()
+                    // createdAt is immutable once set.
+                    && request.resource.data.createdAt == resource.data.createdAt
+                    && request.resource.data.updatedAt == request.time;
+
+      allow delete: if isOwner(userId);
+    }
+
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    // On an update, request.resource.data is the full merged post-write
+    // document rather than the delta, so one function serves both create and
+    // update. The `== request.time` comparisons above are what FORCE the client
+    // to use FieldValue.serverTimestamp(): a client-supplied DateTime.now() is
+    // rejected, which is what makes "newest first" trustworthy across devices
+    // with wrong or user-set clocks.
+    function isValidNote() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['title', 'body', 'createdAt', 'updatedAt'])
+          && d.keys().hasAll(['title', 'body', 'createdAt', 'updatedAt'])
+          && d.title is string
+          && d.title.size() <= 200
+          && d.body is string
+          && d.body.size() <= 20000
+          && d.createdAt is timestamp
+          && d.updatedAt is timestamp;
+    }
+  }
+}

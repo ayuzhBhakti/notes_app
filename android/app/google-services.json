@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "686456708333",
+    "project_id": "notes-f36b3",
+    "storage_bucket": "notes-f36b3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:686456708333:android:54dd28f91a2c80dce700e4",
+        "android_client_info": {
+          "package_name": "com.spacewire.notes"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "686456708333-bhfa4bsdnsrivcdmkkugvj4n0n927tql.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyArL0uKYHAllb8KY5Vs4NlurKvGPMKxMcs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "686456708333-bhfa4bsdnsrivcdmkkugvj4n0n927tql.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "686456708333-f3jcg4edjglfpocpv69uvggappupp0h8.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.spacewire.notes"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
