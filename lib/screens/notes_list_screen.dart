@@ -21,12 +21,17 @@ class NotesListScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Notes'),
         actions: <Widget>[
-          IconButton(
-            tooltip: 'Profile',
-            icon: const Icon(Icons.account_circle_outlined),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const ProfileScreen(),
+          // Selected by the Maestro flows in .maestro/; a tooltip alone is not
+          // exposed as text on Android 9+.
+          Semantics(
+            identifier: 'notes_profile_button',
+            child: IconButton(
+              tooltip: 'Profile',
+              icon: const Icon(Icons.account_circle_outlined),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const ProfileScreen(),
+                ),
               ),
             ),
           ),

@@ -54,6 +54,10 @@ dependencies:
   google_sign_in_ios: ^6.3.3
 
   flutter_riverpod: ^3.4.3
+  # Holds the deep-link onboarding state (stage, form details, plan). It has to
+  # live on the device because that flow runs before any account exists.
+  shared_preferences: ^2.5.5
+  supabase: ^2.16.2
 
 dev_dependencies:
   flutter_test:

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/misc.dart' show ProviderException;
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../services/auth_service.dart' show SignInCanceled;
+import '../services/leads_repository.dart' show LeadSaveFailure;
 
 /// A failure rendered for a human, with an optional actionable hint.
 class AppFailure {
@@ -22,6 +23,13 @@ AppFailure describeError(Object error) {
 
   if (error is SignInCanceled) {
     return const AppFailure('Sign-in was cancelled.');
+  }
+
+  if (error is LeadSaveFailure) {
+    return const AppFailure(
+      "We couldn't save your details.",
+      hint: 'Check your connection and try again.',
+    );
   }
 
   if (error is GoogleSignInException) {

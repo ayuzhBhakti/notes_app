@@ -1,21 +1,43 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 
 import 'firebase_options.dart';
-import 'screens/auth_gate.dart';
+import 'providers.dart';
+import 'screens/app_gate.dart';
 import 'services/auth_service.dart';
+import 'services/deep_link_service.dart';
+import 'services/install_referrer_service.dart';
+import 'services/onboarding_store.dart';
 import 'utils/errors.dart';
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  final WidgetsBinding binding = WidgetsFlutterBinding.ensureInitialized();
 
+  // Before runApp, so this observer is asked about an incoming link ahead of
+  // the one WidgetsApp registers. See DeepLinkService.start.
+  final DeepLinkService deepLinks = DeepLinkService(binding)..start();
+
+  final OnboardingStore onboardingStore;
+  String? installReferrer;
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
     // Exactly once, awaited, before any other GoogleSignIn.instance call.
     await AuthService.initializeGoogleSignIn();
+    onboardingStore = await OnboardingStore.open();
+
+    // First launch only: the referrer cannot change after install. Awaited
+    // so the very first frame is already the right interface; a failed read
+    // is left unmarked and tried again on the next launch.
+    if (!onboardingStore.installReferrerChecked) {
+      installReferrer = await const InstallReferrerService().fetch();
+      if (installReferrer != null) {
+        await onboardingStore.markInstallReferrerChecked();
+      }
+    }
   } catch (error) {
     // A failure here means the app can never work, so show why rather than
     // leaving the user on a black screen.
@@ -23,7 +45,16 @@ Future<void> main() async {
     return;
   }
 
-  runApp(const ProviderScope(child: NotesApp()));
+  runApp(
+    ProviderScope(
+      overrides: <Override>[
+        deepLinkServiceProvider.overrideWithValue(deepLinks),
+        onboardingStoreProvider.overrideWithValue(onboardingStore),
+        installReferrerProvider.overrideWithValue(installReferrer),
+      ],
+      child: const NotesApp(),
+    ),
+  );
 }
 
 class NotesApp extends StatelessWidget {
@@ -43,9 +74,22 @@ class NotesApp extends StatelessWidget {
           brightness: Brightness.dark,
         ),
       ),
-      home: const AuthGate(),
+      // No `home`: a cold-start deep link reaches Flutter as the platform's
+      // initial route name, which takes precedence over `initialRoute`. With
+      // `home`, the Navigator would try to push that URL as a named route and
+      // report an error. The link is read by DeepLinkService instead, so
+      // whatever the initial route name is, the app starts on the one root
+      // route. `home` and `onGenerateInitialRoutes` cannot be combined, hence
+      // `onGenerateRoute`.
+      onGenerateInitialRoutes: (String _) => <Route<void>>[_rootRoute()],
+      onGenerateRoute: (RouteSettings _) => _rootRoute(),
     );
   }
+
+  static Route<void> _rootRoute() => MaterialPageRoute<void>(
+        settings: const RouteSettings(name: Navigator.defaultRouteName),
+        builder: (BuildContext _) => const AppGate(),
+      );
 }
 
 class _BootstrapErrorApp extends StatelessWidget {

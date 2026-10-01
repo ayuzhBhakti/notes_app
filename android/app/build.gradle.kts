@@ -47,3 +47,8 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // Used directly by MainActivity.kt to read the Play Store install referrer.
+    implementation("com.android.installreferrer:installreferrer:2.2")
+}

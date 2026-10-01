@@ -4,4 +4,22 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <application>
+        <!-- Debug builds only: the local test link notes://onboarding. A
+             custom scheme needs no domain verification, so it opens the app
+             on any device. It is kept out of the main manifest because any
+             other app could claim the same scheme. The manifest merger adds
+             this filter to the MainActivity declared in src/main. -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="notes" android:host="onboarding"/>
+            </intent-filter>
+        </activity>
+    </application>
 </manifest>

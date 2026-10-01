@@ -122,16 +122,26 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
       appBar: AppBar(
         title: Text(isEditing ? 'Edit note' : 'New note'),
         actions: <Widget>[
+          // The Semantics identifiers in this screen are what the Maestro flows
+          // in .maestro/ select on. A tooltip is not exposed as text on
+          // Android 9+, and a hint disappears once the field has content, so
+          // neither is a stable selector.
           if (isEditing)
-            IconButton(
-              tooltip: 'Delete',
-              icon: const Icon(Icons.delete_outline),
-              onPressed: _delete,
+            Semantics(
+              identifier: 'note_delete_button',
+              child: IconButton(
+                tooltip: 'Delete',
+                icon: const Icon(Icons.delete_outline),
+                onPressed: _delete,
+              ),
             ),
-          IconButton(
-            tooltip: 'Save',
-            icon: const Icon(Icons.check),
-            onPressed: _save,
+          Semantics(
+            identifier: 'note_save_button',
+            child: IconButton(
+              tooltip: 'Save',
+              icon: const Icon(Icons.check),
+              onPressed: _save,
+            ),
           ),
         ],
       ),
@@ -140,31 +150,37 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            TextField(
-              controller: _title,
-              maxLines: 1,
-              // Matches the 200-byte cap in the security rules.
-              maxLength: 200,
-              textCapitalization: TextCapitalization.sentences,
-              style: Theme.of(context).textTheme.titleLarge,
-              decoration: const InputDecoration(
-                hintText: 'Title',
-                border: InputBorder.none,
-                counterText: '',
+            Semantics(
+              identifier: 'note_title_field',
+              child: TextField(
+                controller: _title,
+                maxLines: 1,
+                // Matches the 200-byte cap in the security rules.
+                maxLength: 200,
+                textCapitalization: TextCapitalization.sentences,
+                style: Theme.of(context).textTheme.titleLarge,
+                decoration: const InputDecoration(
+                  hintText: 'Title',
+                  border: InputBorder.none,
+                  counterText: '',
+                ),
               ),
             ),
             const Divider(),
             Expanded(
-              child: TextField(
-                controller: _body,
-                maxLines: null,
-                expands: true,
-                textAlignVertical: TextAlignVertical.top,
-                textCapitalization: TextCapitalization.sentences,
-                keyboardType: TextInputType.multiline,
-                decoration: const InputDecoration(
-                  hintText: 'Write something…',
-                  border: InputBorder.none,
+              child: Semantics(
+                identifier: 'note_body_field',
+                child: TextField(
+                  controller: _body,
+                  maxLines: null,
+                  expands: true,
+                  textAlignVertical: TextAlignVertical.top,
+                  textCapitalization: TextCapitalization.sentences,
+                  keyboardType: TextInputType.multiline,
+                  decoration: const InputDecoration(
+                    hintText: 'Write something…',
+                    border: InputBorder.none,
+                  ),
                 ),
               ),
             ),
