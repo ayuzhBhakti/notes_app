@@ -102,6 +102,22 @@ Then move the zip into the folder the wrapper created, next to the `.lck` file, 
 
 The same failure can return for a different Gradle version. Retrying, switching network, or repeating these steps all work.
 
+### Release build: `Dart snapshot generator failed with exit code -9`
+
+Seen on 2026-10-05 during `flutter build apk`, together with `Failed to find ".../android-x64-release/darwin-x64/gen_snapshot"`. Debug builds were unaffected because they do not use `gen_snapshot`.
+
+**Cause:** the Flutter SDK on this machine was unpacked from a zip downloaded with Safari, so every file in it, including the bundled engine cache, carries the `com.apple.quarantine` attribute. macOS killed the quarantined release `gen_snapshot` binaries (exit code -9 is SIGKILL) and they were gone from the three `android-*-release/darwin-x64` folders afterwards. Flutter did not download them again because the folders still existed.
+
+**Fix:** delete the gutted folders and let Flutter fetch them again. Files Flutter downloads itself are not quarantined.
+
+```sh
+E=~/flutter/bin/cache/artifacts/engine
+rm -r $E/android-arm-release/darwin-x64 $E/android-arm64-release/darwin-x64 $E/android-x64-release/darwin-x64
+flutter precache --android
+```
+
+The `android-*-profile` binaries are still the quarantined originals. If `flutter build apk --profile` fails the same way, do the same for the `-profile` folders.
+
 ### The direct onboarding link opens the browser, not the app
 
 The domain is not verified for the app. Approve it on the device with the command in [09-deep-link-onboarding.md](09-deep-link-onboarding.md#android).

@@ -2,7 +2,7 @@
 
 Condensed, current facts about this project for AI coding agents. The full docs are in [docs/](../README.md); read the relevant one before a non-trivial change.
 
-Last verified against the code: 2026-10-01.
+Last verified against the code: 2026-10-05.
 
 ## What this is
 
@@ -20,6 +20,7 @@ flutter pub get
 flutter analyze            # must report no issues
 flutter test               # 46 tests, all must pass
 flutter build apk --debug  # verified working 2026-10-01
+flutter build apk          # release, verified working 2026-10-05
 flutter run
 ./tool/maestro.sh test .maestro                 # end-to-end flows; needs a device with the app installed
 ./tool/maestro.sh check-syntax <flow.yaml>      # no device needed
@@ -81,7 +82,7 @@ Explicit types on everything, `const` where possible, relative imports in `lib/`
 
 ## Current state
 
-- `flutter analyze` clean, 46 of 46 tests passing, debug APK builds (2026-10-01).
+- `flutter analyze` clean, 46 of 46 tests passing, debug and release APKs build (2026-10-05). The release APK has not been installed or run.
 - **Supabase is not configured.** No URL, key or table exists yet, so no form has ever really been saved. A debug build logs `[leads] Supabase is not configured` and continues; a release build blocks at the form. Do not report saving as working.
 - **The Play Store referrer path has never run through Play.** It needs a build on a Play testing track. Do not report it as verified.
 - Maestro 2.11.0 is installed in `~/.maestro`. `deeplink_local` and `onboarding_deeplink` pass on the test phone. The five notes flows are **blocked at Google sign-in** (the phone's only account is a managed one demanding a lock screen) and nothing after sign-in has run. Do not report them as passing.
@@ -95,6 +96,7 @@ Explicit types on everything, `const` where possible, relative imports in `lib/`
 
 - The Gradle wrapper download can time out on this network. The fix is in [05-setup-and-build.md](../05-setup-and-build.md#troubleshooting).
 - There is no `java` on the PATH. The JDK is Android Studio's bundled one at `/Applications/Android Studio.app/Contents/jbr/Contents/Home`; Flutter finds it without help.
+- The Flutter SDK at `~/flutter` is quarantined by macOS (unpacked from a Safari download). A release build failing with `gen_snapshot` exit code -9 or a missing `gen_snapshot` is this; the fix is in [05-setup-and-build.md](../05-setup-and-build.md#troubleshooting).
 - Google sign-in on Android needs the machine's debug SHA-1 registered in Firebase. Without it, sign-in looks like a silent cancel.
 
 ## After every task

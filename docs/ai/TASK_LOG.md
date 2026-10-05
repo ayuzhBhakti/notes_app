@@ -17,6 +17,15 @@ One entry per completed task, newest first. Keep entries short: what changed, wh
 
 ---
 
+## 2026-10-05 — Release APK build failed in gen_snapshot
+
+**Request:** `flutter build apk` failed with `Dart snapshot generator failed with exit code -9`; find out why and fix it.
+**Changes:** no project files. In the Flutter SDK cache, deleted the three `android-*-release/darwin-x64` folders and ran `flutter precache --android` to download them again.
+**Why:** the SDK came from a zip downloaded with Safari, so its bundled binaries are quarantined. macOS killed the release `gen_snapshot` binaries and they were missing from the cache; only the licence file was left in each folder, which stopped Flutter from re-downloading. Fresh downloads are not quarantined, so no quarantine attribute had to be stripped.
+**Verified:** `flutter build apk` built `app-release.apk` (55.2MB); `flutter analyze` clean; `flutter test` 46 of 46. **Not verified:** the APK was not installed or run, and `--profile` builds were not tried.
+**Docs updated:** `05` (new troubleshooting entry), `AGENT_CONTEXT.md`.
+**Follow-ups:** the rest of the SDK is still quarantined; the profile `gen_snapshot` binaries may fail the same way.
+
 ## 2026-10-01 — Local link to verify deep linking
 
 **Request:** a local link to verify that deep linking works.
