@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Keys for the analytics SDKs. All three are public by design: they ship
+         inside every APK. While a value is still its placeholder, that SDK is
+         never started and nothing is sent. The placeholders are matched by
+         name in MixpanelSdk.kt and MetaSdk.kt.
+
+         Mixpanel: Project settings -> Project token.
+         Facebook: developers.facebook.com -> the app -> App settings ->
+         Basic (App ID) and Advanced (Client token). -->
+    <string name="mixpanel_token" translatable="false">YOUR_MIXPANEL_TOKEN</string>
+    <string name="facebook_app_id" translatable="false">YOUR_FACEBOOK_APP_ID</string>
+    <string name="facebook_client_token" translatable="false">YOUR_FACEBOOK_CLIENT_TOKEN</string>
+</resources>

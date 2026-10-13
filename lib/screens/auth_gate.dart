@@ -15,6 +15,17 @@ class AuthGate extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Covers both a fresh sign-in and an app start with a live session.
+    ref.listen<String?>(currentUidProvider, (String? _, String? uid) {
+      final User? user = ref.read(currentUserProvider);
+      if (uid == null || user == null) return;
+      ref.read(analyticsProvider).identify(
+            uid,
+            name: user.displayName,
+            email: user.email,
+          );
+    });
+
     final AsyncValue<User?> authState = ref.watch(authStateProvider);
 
     return authState.when(

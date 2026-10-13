@@ -44,4 +44,4 @@ esac
 # it would, so it fails if the app does not actually claim the link.
 "$ADB" shell am start -W -a android.intent.action.VIEW \
   -c android.intent.category.BROWSABLE -d "$LINK" | grep -E 'Status|Activity|Error' || true
-echo "Opened $LINK. The app should show \"Tell us about you\"."
+echo "Opened $LINK. The app should show \"Welcome to Evos\"."

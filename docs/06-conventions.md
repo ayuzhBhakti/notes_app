@@ -27,7 +27,7 @@ Comments explain why, not what. The typical comment in this codebase records a d
 
 - Capture `Navigator.of(context)` and `ScaffoldMessenger.of(context)` **before** any async gap, then use the captured objects.
 - Do not await a Firestore write before popping a screen. Use `unawaited(...)` and report failure in `.then`. Awaiting would hang the screen while offline.
-- Do await a Supabase write, and show a busy state while it runs. It has no offline cache, so success is only known when the server answers.
+- Do await a Supabase call, and show a busy state while it runs. It has no offline cache, so success is only known when the server answers.
 - Never navigate in response to sign-in, sign-out or an onboarding stage change. `AuthGate` and `AppGate` handle it.
 - Do not give `MaterialApp` a `home`, and do not move `DeepLinkService.start()` after `runApp`. Both break deep links; the reasons are in [09-deep-link-onboarding.md](09-deep-link-onboarding.md#receiving-the-direct-link).
 
@@ -36,10 +36,21 @@ Comments explain why, not what. The typical comment in this codebase records a d
 - Screens and widgets do not call Firebase SDKs. They use providers, which use `AuthService` and `NotesRepository`.
 - Repository methods take `uid` as their first argument.
 - All timestamps written to Firestore are `FieldValue.serverTimestamp()`.
-- Only [onboarding_store.dart](../lib/services/onboarding_store.dart) imports `shared_preferences`, and only [leads_repository.dart](../lib/services/leads_repository.dart) imports `supabase`. Screens reach payment only through `PaymentGateway`.
+- Only [onboarding_store.dart](../lib/services/onboarding_store.dart) imports `shared_preferences`, and only [evos_backend.dart](../lib/services/evos_backend.dart) imports `supabase`. Screens reach payment only through `PaymentGateway`, and the backend only through providers.
 - Use the pure-Dart `supabase` package. Do not add `supabase_flutter`; its deep-link plugin conflicts with `DeepLinkService`.
-- A Supabase table written with the anon key gets an insert-only policy. Never add a select, update or delete policy for `anon`.
+- The anon key in the app may read only `app_config` rows marked `is_public`, and a signed-in user only their own rows. Never add an insert, update or delete policy for `anon` or `authenticated`: every write goes through an edge function with the service role.
+- Secrets (the Cashfree id and secret, the SMS key) stay in private `app_config` rows or function secrets. Nothing the app can read may hold one.
+- Backend errors reach the UI as `BackendFailure` with a `BackendError` kind, never as the server's message.
 - A new Firestore field needs three changes together: [firestore.rules](../firestore.rules) (both the `hasOnly` and `hasAll` lists), [note.dart](../lib/models/note.dart), and [notes_repository.dart](../lib/services/notes_repository.dart). Then the rules must be published.
+
+## Analytics
+
+- Every event is a method on `Analytics` in [analytics.dart](../lib/services/analytics.dart). Do not build an event name anywhere else, and add the event to [10-analytics.md](10-analytics.md) in the same change.
+- Event names are Title Case, property names snake_case.
+- Never send note content, a phone number or a sign-in code. A failure is sent as `errorCode(error)`, never as the error's message.
+- Call analytics from the controller that performs the action. A screen calls it only for its own view event: in `initState` if it has state, otherwise by wrapping its `Scaffold` in `TrackView`. Never call it from `build`.
+- Do not await analytics, and do not let it decide anything. The app must behave the same with it switched off.
+- A simulated payment is never sent to Facebook as a purchase.
 
 ## Errors
 
@@ -49,7 +60,7 @@ Comments explain why, not what. The typical comment in this codebase records a d
 
 ## Dependencies
 
-Prefer a few lines of code over a new package. `intl` was left out on purpose in favour of [format.dart](../lib/utils/format.dart), and deep links are read from the framework instead of through a plugin. Adding a package needs a reason, recorded in the task log.
+Prefer a few lines of code over a new package. `intl` was left out on purpose in favour of [format.dart](../lib/utils/format.dart), deep links are read from the framework instead of through a plugin, and Mixpanel and the Facebook SDK are called from Kotlin instead of through two plugins. Adding a package needs a reason, recorded in the task log.
 
 ## Tests
 

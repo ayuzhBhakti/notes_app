@@ -28,6 +28,12 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
       TextEditingController(text: widget.note?.body ?? '');
 
   @override
+  void initState() {
+    super.initState();
+    ref.read(analyticsProvider).noteEditorOpened(isNew: widget.note == null);
+  }
+
+  @override
   void dispose() {
     _title.dispose();
     _body.dispose();

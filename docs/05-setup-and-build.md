@@ -54,7 +54,7 @@ Release builds are currently signed with the debug key ([android/app/build.gradl
 
 ### Supabase
 
-The onboarding form is saved to Supabase. The project is passed at build time, and without it nothing is saved:
+The onboarding interface signs in, reads its settings and takes payment through Supabase. The Evos project (`sqvlgiqypqvjykczuhgz`) is the default in [supabase_options.dart](../lib/supabase_options.dart), so a plain build uses it. Its backend is not set up yet, so "Send code" fails on such a build. For test mode (no SMS, the code is `123456`, simulated payment) switch the backend off in a debug build with `flutter run --dart-define=SUPABASE_URL=`. To use another project:
 
 ```sh
 flutter run \
@@ -62,7 +62,11 @@ flutter run \
   --dart-define=SUPABASE_ANON_KEY=<anon key>
 ```
 
-The same two flags go on `flutter build`. The table to create is in [09-deep-link-onboarding.md](09-deep-link-onboarding.md#saving-the-details).
+The same two flags go on `flutter build`. Creating and filling the project is in [09-deep-link-onboarding.md](09-deep-link-onboarding.md#setting-up-the-backend).
+
+### Analytics keys
+
+Mixpanel and the Facebook SDK stay off until their keys replace the placeholders in [analytics_keys.xml](../android/app/src/main/res/values/analytics_keys.xml). Where to find each key, and what a build without them does, is in [10-analytics.md](10-analytics.md#configuration).
 
 ### Onboarding links
 
@@ -74,6 +78,7 @@ The real entry is a Play Store link with `referrer=flow%3Donboarding`, which wor
 
 - **Bump the three FlutterFire packages together.** `firebase_core`, `firebase_auth` and `cloud_firestore` are pinned to exact versions. Each ships an iOS Swift package that pins the Firebase iOS SDK to an exact version, and all three must agree or Swift Package Manager cannot resolve.
 - **Keep `google_sign_in_android` at 7.2.12 or later.** Earlier versions fail to compile under Kotlin Gradle Plugin 2.4.0.
+- **Mixpanel and the Facebook SDK are Gradle dependencies, not pub packages.** They are in [android/app/build.gradle.kts](../android/app/build.gradle.kts) and used from Kotlin. Do not add `mixpanel_flutter` or `facebook_app_events` beside them.
 - **Keep `google_sign_in_ios` at 6.3.0 or later.** Earlier versions do not handle the OAuth redirect under UIScene.
 
 ## Troubleshooting
@@ -122,9 +127,9 @@ The `android-*-profile` binaries are still the quarantined originals. If `flutte
 
 The domain is not verified for the app. Approve it on the device with the command in [09-deep-link-onboarding.md](09-deep-link-onboarding.md#android).
 
-### "We couldn't save your details"
+### "Something went wrong on our side" on the mobile-number screen
 
-The Supabase insert failed. In a debug build the cause is logged with the tag `[leads]`. Usual causes: no network, wrong URL or key, the `onboarding_leads` table or its insert policy missing, or a value breaking a column check. In a release build, it also appears when the build was made without the two `--dart-define` flags.
+Supabase refused the request, or a release build was made with the backend switched off: in a debug build the cause is logged with the tag `[evos]`. Usual causes: phone sign-in not enabled, the SMS hook not set or failing, or the Fast2SMS secrets missing.
 
 ### Installing from the Play link does not start onboarding
 
@@ -132,7 +137,7 @@ The referrer only exists for installs made through Play. `adb install` and `flut
 
 ### The app is stuck in the onboarding interface
 
-That is by design once the link has been opened. In a debug build, finish the flow and tap "Reset deep-link flow". Otherwise clear the app's data: `adb shell pm clear com.spacewire.notes`.
+That is by design once the link has been opened. In a debug build, tap "Reset deep-link flow" on the mobile-number or maintenance screen. Otherwise clear the app's data: `adb shell pm clear com.spacewire.notes`.
 
 ### Google asks for a lock screen during sign-in
 
@@ -150,6 +155,10 @@ Either the published Firestore rules differ from [firestore.rules](../firestore.
 
 - `firebase_auth` and `firebase_core` "apply Kotlin Gradle Plugin". Not blocking today; a future Flutter version will fail on it, so upgrade the plugins when versions with Built-in Kotlin exist.
 - `java.lang.System::load` restricted-method warnings come from Gradle running on JDK 25.
+
+### Logcat errors that are expected
+
+While the Facebook keys are placeholders, each launch logs `GraphRequest can't be used when Facebook SDK isn't fully initialized` several times. That is the SDK refusing its own network calls because the app has kept it switched off. It stops once real keys are in.
 
 ### `flutter doctor` findings on the dev machine (2026-10-01)
 

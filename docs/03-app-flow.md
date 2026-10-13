@@ -9,7 +9,7 @@ flowchart TD
     Start([App start]) --> Init{Firebase and Google<br/>Sign-In initialised?}
     Init -- no --> BootErr[Bootstrap error screen]
     Init -- yes --> App{AppGate:<br/>arrived by an<br/>onboarding link?}
-    App -- yes --> Onboarding[Details form → paywall → member home]
+    App -- yes --> Onboarding[Mobile number → code → paywall → maintenance]
     App -- no --> Gate{AuthGate:<br/>auth state}
     Gate -- loading --> Spinner[Spinner]
     Gate -- error --> AuthErr[Error message]
@@ -34,13 +34,16 @@ In [main.dart](../lib/main.dart):
 
 1. `WidgetsFlutterBinding.ensureInitialized()`.
 2. `DeepLinkService.start()`, so it sees incoming links before the framework's own handler.
-3. `Firebase.initializeApp` with `DefaultFirebaseOptions.currentPlatform`.
-4. `AuthService.initializeGoogleSignIn()`. This must run exactly once and be awaited before any other `GoogleSignIn.instance` call.
-5. `OnboardingStore.open()`, which loads the saved onboarding state.
-6. On the first launch only, `InstallReferrerService.fetch()` reads the Play Store install referrer, waiting at most 3 seconds.
-7. `runApp`, with the link service, the store and the referrer passed in as provider overrides.
+3. The `App Opened` analytics event. Mixpanel and the Facebook SDK were already started by `MainActivity`, before any Dart ran.
+4. `Firebase.initializeApp` with `DefaultFirebaseOptions.currentPlatform`.
+5. `AuthService.initializeGoogleSignIn()`. This must run exactly once and be awaited before any other `GoogleSignIn.instance` call.
+6. `OnboardingStore.open()`, which loads the saved onboarding stage, phone session and settings.
+7. On the first launch only, `InstallReferrerService.fetch()` reads the Play Store install referrer, waiting at most 3 seconds. When it answers, the `Install Attributed` event is sent.
+8. `runApp`, with the link service, the store and the referrer passed in as provider overrides.
 
-If step 3, 4 or 5 throws, the app runs `_BootstrapErrorApp` and shows "Notes couldn't start" with the reason. This is what happens on web and desktop, which have no Firebase options.
+If step 4, 5 or 6 throws, the app runs `_BootstrapErrorApp` and shows "Notes couldn't start" with the reason. This is what happens on web and desktop, which have no Firebase options.
+
+Every screen and action after this reports an analytics event. They are listed in [10-analytics.md](10-analytics.md).
 
 ## Sign in
 

@@ -3,7 +3,8 @@ import 'package:flutter_riverpod/misc.dart' show ProviderException;
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../services/auth_service.dart' show SignInCanceled;
-import '../services/leads_repository.dart' show LeadSaveFailure;
+import '../services/evos_backend.dart' show BackendError, BackendFailure;
+import '../services/payment_gateway.dart' show PaymentError, PaymentFailure;
 
 /// A failure rendered for a human, with an optional actionable hint.
 class AppFailure {
@@ -11,6 +12,19 @@ class AppFailure {
 
   final String message;
   final String? hint;
+}
+
+/// A short, stable name for an error, for analytics. Never the error's
+/// message: that is free text and can contain an email address or a document
+/// path.
+String errorCode(Object error) {
+  if (error is ProviderException) return errorCode(error.exception);
+  if (error is GoogleSignInException) return error.code.name;
+  if (error is BackendFailure) return error.kind.name;
+  if (error is PaymentFailure) return error.code ?? error.kind.name;
+  // Covers FirebaseAuthException, which extends it.
+  if (error is FirebaseException) return error.code;
+  return error.runtimeType.toString();
 }
 
 /// Maps any thrown object to something worth showing a user.
@@ -25,11 +39,50 @@ AppFailure describeError(Object error) {
     return const AppFailure('Sign-in was cancelled.');
   }
 
-  if (error is LeadSaveFailure) {
-    return const AppFailure(
-      "We couldn't save your details.",
-      hint: 'Check your connection and try again.',
-    );
+  if (error is BackendFailure) {
+    return switch (error.kind) {
+      BackendError.network => const AppFailure(
+          "We couldn't reach the server.",
+          hint: 'Check your connection and try again.',
+        ),
+      BackendError.invalidPhone =>
+        const AppFailure('Enter a valid 10-digit mobile number.'),
+      BackendError.tooManyRequests => const AppFailure(
+          'Too many attempts.',
+          hint: 'Wait a minute, then try again.',
+        ),
+      BackendError.wrongCode => const AppFailure(
+          "That code isn't right, or it has expired.",
+          hint: 'Check the SMS, or ask for a new code.',
+        ),
+      BackendError.signedOut =>
+        const AppFailure('You have been signed out. Sign in again.'),
+      BackendError.alreadySubscribed =>
+        const AppFailure('Your subscription is already active.'),
+      BackendError.notConfigured ||
+      BackendError.server =>
+        const AppFailure('Something went wrong on our side. Try again.'),
+    };
+  }
+
+  if (error is PaymentFailure) {
+    return switch (error.kind) {
+      PaymentError.upiAppUnavailable => const AppFailure(
+          "That UPI app couldn't be opened.",
+          hint: 'Choose another UPI app.',
+        ),
+      PaymentError.declined => const AppFailure(
+          "The payment didn't go through.",
+          hint: 'Nothing was charged. Try again, or use another UPI app.',
+        ),
+      PaymentError.pending => const AppFailure(
+          "We're still confirming your payment.",
+          hint: 'This can take a minute. Close the app and open it again; '
+              'if the payment went through, you will be let in.',
+        ),
+      PaymentError.unsupported =>
+        const AppFailure('Payments are not available on this device.'),
+    };
   }
 
   if (error is GoogleSignInException) {

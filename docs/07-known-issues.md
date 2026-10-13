@@ -36,19 +36,37 @@ Open decisions and unfinished parts of [09-deep-link-onboarding.md](09-deep-link
 
 | Item | Detail |
 |------|--------|
-| Member home is a placeholder | What deep-link users see after paying has not been specified. |
-| Payment is simulated | Every purchase succeeds and nothing is charged. Plan names and prices are invented. |
-| Entitlement is a device flag | "Paid" is a value in `shared_preferences`. With a real provider it must be verified on a server. |
-| Supabase is not configured | No project URL or anon key has been supplied, and the `onboarding_leads` table has not been created. Until both exist, a debug build saves nothing and a release build cannot get past the form. A real insert has never been tested. |
+| Payment is not set up | Sign-in works against project `sqvlgiqypqvjykczuhgz`. Still empty: `cashfree_app_id`, `cashfree_secret_key`, `customer_email_domain`; and the Cashfree dashboard has no webhook for this project. Until then "Try Now" fails on a normal build. |
+| Sign-in SMS says CashAlert | The Fast2SMS template is CashAlert's. Evos needs its own DLT template. |
+| Sharing CashAlert's Cashfree account | Cashfree sends every app's subscription events to every webhook URL on the account. This backend ignores mandates whose id does not start with `ev_`; CashAlert's webhook is expected to ignore Evos mandates as "user not found", which has not been checked. |
+| Nothing real has run | No SMS has been sent, no code verified by Supabase, no settings fetched, and the Cashfree sheet has never been opened from this app. The list is in [09-deep-link-onboarding.md](09-deep-link-onboarding.md#what-is-not-verified). |
+| What is behind the paywall is not built | A subscriber sees the maintenance screen. |
+| A second tap on "Try Now" while a payment is pending opens a second mandate | The server refuses a new subscription only once the first is confirmed. Inherited from CashAlert. |
+| No preview video on the paywall | CashAlert plays one; this paywall shows a picture from the backend. |
+| The SMS code is not read automatically | The field only carries the one-time-code autofill hint. CashAlert uses the SMS User Consent API. |
+| SMS sender and template | Fast2SMS needs a DLT-registered sender id and template for Evos. CashAlert's template names CashAlert. |
+| `customer_email_domain` is unset | Cashfree needs an email per customer; the server makes one on a domain the business owns, and refuses to create a subscription until the row is filled. |
+| Launcher name and icon are fixed | The backend changes the name and logo inside the interface only. On the home screen the app is "notes". |
+| Left out of the CashAlert backend | Push notifications, server-side Mixpanel events, the failed-debit retry job and the daily report. A failed renewal ends access silently. |
 | Play Store referrer never tested end to end | It needs a build on a Play testing track. Only the channel itself is confirmed on a device. The marker `flow=onboarding` is unconfirmed with whoever writes the links. |
-| Resubmitting the form inserts a second row | By design, to keep the table insert-only. Reports must take the newest row per email. |
-| The chosen plan is not saved | Only the form goes to Supabase. |
 | Existing installs cannot enter by Play link | The referrer belongs to the install. A user who already has the app and taps the Play link just opens the normal app. |
 | Direct link is a development aid | Its domain, `notes-f36b3.web.app`, hosts nothing and is unverified, so Android opens it in a browser unless the domain is approved on the device. Remove the intent filter before release if it is not wanted. |
-| iOS has no way in | No install referrer exists on iOS, and Universal Links are not set up. |
+| iOS has no way in | No install referrer exists on iOS, Universal Links are not set up, and the payment code is Android-only. |
 | Anyone with the link can trigger it | The link carries no token, so anyone who has it switches their device into onboarding. Fine for a public offer; not for invitations. |
 
 Decided, not an issue: a deep-link user has no way back to the notes app.
+
+## Analytics
+
+Unfinished parts of [10-analytics.md](10-analytics.md); its "Known gaps" section has the rest.
+
+| Item | Detail |
+|------|--------|
+| No keys | The Mixpanel token and the Facebook app ID and client token are placeholders, so nothing is sent. No event has been seen in Mixpanel or in Facebook Events Manager. |
+| Sign-in and notes events never run | The six sign-in events, the eight notes events, `identify` and the reset on log out have a call site each but have never executed: sign-in is blocked on the test phone and those screens have no widget tests. |
+| iOS sends nothing | The SDKs are wired on Android only. |
+| No consent screen | The Facebook SDK collects the advertising ID once configured. Play's advertising-ID declaration must now say yes. |
+| Debug and release share a project | Test runs will be mixed in with real users once keys are added. |
 
 ## Gaps
 

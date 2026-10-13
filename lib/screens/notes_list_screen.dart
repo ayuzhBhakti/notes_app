@@ -5,8 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/note.dart';
 import '../providers.dart';
+import '../services/analytics.dart';
 import '../utils/errors.dart';
 import '../widgets/note_tile.dart';
+import '../widgets/track_view.dart';
 import 'note_editor_screen.dart';
 import 'profile_screen.dart';
 
@@ -17,50 +19,53 @@ class NotesListScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final AsyncValue<List<Note>> notes = ref.watch(notesStreamProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Notes'),
-        actions: <Widget>[
-          // Selected by the Maestro flows in .maestro/; a tooltip alone is not
-          // exposed as text on Android 9+.
-          Semantics(
-            identifier: 'notes_profile_button',
-            child: IconButton(
-              tooltip: 'Profile',
-              icon: const Icon(Icons.account_circle_outlined),
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const ProfileScreen(),
+    return TrackView(
+      onView: (Analytics analytics) => analytics.notesListViewed(),
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Notes'),
+          actions: <Widget>[
+            // Selected by the Maestro flows in .maestro/; a tooltip alone is not
+            // exposed as text on Android 9+.
+            Semantics(
+              identifier: 'notes_profile_button',
+              child: IconButton(
+                tooltip: 'Profile',
+                icon: const Icon(Icons.account_circle_outlined),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const ProfileScreen(),
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _openEditor(context, null),
-        icon: const Icon(Icons.add),
-        label: const Text('New note'),
-      ),
-      body: notes.when(
-        // Without this, signing in (or any auth re-emit) blanks the list and
-        // flashes a spinner over content that is already correct.
-        skipLoadingOnReload: true,
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (Object error, StackTrace _) => _ErrorView(
-          failure: describeError(error),
-          onRetry: () => ref.invalidate(notesStreamProvider),
+          ],
         ),
-        data: (List<Note> items) {
-          if (items.isEmpty) return const _EmptyView();
-          return ListView.separated(
-            padding: const EdgeInsets.only(bottom: 96),
-            itemCount: items.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (BuildContext context, int index) =>
-                _row(context, ref, items[index]),
-          );
-        },
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: () => _openEditor(context, null),
+          icon: const Icon(Icons.add),
+          label: const Text('New note'),
+        ),
+        body: notes.when(
+          // Without this, signing in (or any auth re-emit) blanks the list and
+          // flashes a spinner over content that is already correct.
+          skipLoadingOnReload: true,
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (Object error, StackTrace _) => _ErrorView(
+            failure: describeError(error),
+            onRetry: () => ref.invalidate(notesStreamProvider),
+          ),
+          data: (List<Note> items) {
+            if (items.isEmpty) return const _EmptyView();
+            return ListView.separated(
+              padding: const EdgeInsets.only(bottom: 96),
+              itemCount: items.length,
+              separatorBuilder: (_, _) => const Divider(height: 1),
+              itemBuilder: (BuildContext context, int index) =>
+                  _row(context, ref, items[index]),
+            );
+          },
+        ),
       ),
     );
   }

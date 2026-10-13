@@ -2,6 +2,8 @@ package com.spacewire.notes
 
 import com.android.installreferrer.api.InstallReferrerClient
 import com.android.installreferrer.api.InstallReferrerStateListener
+import com.spacewire.notes.analytics.AnalyticsChannel
+import com.spacewire.notes.payments.PaymentsChannel
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -9,6 +11,13 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // Starts Mixpanel and the Facebook SDK, and answers
+        // lib/services/analytics.dart.
+        AnalyticsChannel.register(application, flutterEngine.dartExecutor.binaryMessenger)
+
+        // Cashfree UPI AutoPay, for lib/services/payment_gateway.dart.
+        PaymentsChannel.register(this, flutterEngine.dartExecutor.binaryMessenger)
 
         // Read by lib/services/install_referrer_service.dart.
         MethodChannel(

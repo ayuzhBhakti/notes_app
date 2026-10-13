@@ -14,7 +14,8 @@ Start here. Every document in this folder describes the code as it actually is, 
 | 6 | [Conventions](06-conventions.md) | Code style and the patterns new code must follow |
 | 7 | [Known issues](07-known-issues.md) | Bugs, gaps and tech debt found so far |
 | 8 | [End-to-end testing](08-e2e-testing.md) | Running and writing Maestro flows against a real device |
-| 9 | [Deep-link onboarding](09-deep-link-onboarding.md) | The form, paywall and member home shown to users who arrive by link; App Links setup |
+| 9 | [Deep-link onboarding](09-deep-link-onboarding.md) | The Evos interface shown to users who arrive by link: phone sign-in, paywall, maintenance; the Supabase backend and its settings; Cashfree; App Links setup |
+| 10 | [Analytics](10-analytics.md) | Every Mixpanel and Facebook event, what triggers it, and where the keys go |
 
 ## For AI agents
 
@@ -37,7 +38,8 @@ After every task:
 |----------------|--------|
 | A screen, a route, or what the user sees | [03-app-flow.md](03-app-flow.md), and the Maestro flows in `.maestro/` that select on it |
 | A Maestro flow or a semantics identifier | [08-e2e-testing.md](08-e2e-testing.md) |
-| The onboarding flow, the link, payment, or what is stored on the device | [09-deep-link-onboarding.md](09-deep-link-onboarding.md) |
+| The onboarding flow, the link, payment, what is stored on the device, or anything in `supabase/` (a table, a policy, an `app_config` key, an edge function) | [09-deep-link-onboarding.md](09-deep-link-onboarding.md) |
+| An analytics event, property, or key | [10-analytics.md](10-analytics.md) |
 | A provider, a service, a folder, or an import rule | [02-architecture.md](02-architecture.md), [ai/AGENT_CONTEXT.md](ai/AGENT_CONTEXT.md) |
 | A Firestore field, collection, query, or `firestore.rules` | [04-data-model.md](04-data-model.md) |
 | A dependency, SDK version, Gradle or Xcode setting | [01-overview.md](01-overview.md), [05-setup-and-build.md](05-setup-and-build.md) |

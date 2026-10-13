@@ -6,10 +6,10 @@ Deep-link onboarding keeps its data elsewhere:
 
 | Data | Where |
 |------|-------|
-| Stage, form details, chosen plan | On the device, in `shared_preferences` |
-| Form details (name, email, phone, address) | Also inserted into the Supabase table `onboarding_leads`, insert-only for the app |
+| Stage, phone sign-in session, last fetched settings | On the device, in `shared_preferences` |
+| Accounts, subscription status, payment log, settings | Supabase: `auth.users`, `profiles`, `subscription_payments`, `app_config` |
 
-The table definition and its policy are in [09-deep-link-onboarding.md](09-deep-link-onboarding.md#saving-the-details).
+The tables and their policies are in [supabase/migrations/](../supabase/migrations/20261013120000_evos_init.sql) and described in [09-deep-link-onboarding.md](09-deep-link-onboarding.md#backend). They have not been applied to any project yet.
 
 ## Schema
 

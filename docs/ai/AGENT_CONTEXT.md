@@ -2,7 +2,7 @@
 
 Condensed, current facts about this project for AI coding agents. The full docs are in [docs/](../README.md); read the relevant one before a non-trivial change.
 
-Last verified against the code: 2026-10-05.
+Last verified against the code: 2026-10-13.
 
 ## What this is
 
@@ -11,19 +11,23 @@ A Flutter notes app. Google sign-in through Firebase Auth, notes stored per user
 The app has two interfaces, chosen by the root widget `AppGate`:
 
 - **Normal:** `AuthGate` → sign-in or the notes list. This is what every user gets by default.
-- **Onboarding:** details form → paywall → member home. Shown when the app was installed from a Play Store link whose referrer contains `flow=onboarding`, or when a link is opened: `notes://onboarding` (debug builds only, the one to test with) or `https://notes-f36b3.web.app/onboarding`. Remembered across restarts, with no way back to notes by decision. No sign-in, no Firebase. The form is saved to Supabase; payment is simulated. Details: [09-deep-link-onboarding.md](../09-deep-link-onboarding.md).
+- **Onboarding (called Evos in the app):** mobile number → SMS code → paywall → "under maintenance". Shown when the app was installed from a Play Store link whose referrer contains `flow=onboarding`, or when a link is opened: `notes://onboarding` (debug builds only, the one to test with) or `https://notes-f36b3.web.app/onboarding`. Remembered across restarts, with no way back to notes by decision. No Firebase: phone sign-in, settings and the subscription are on Supabase, payment is Cashfree UPI AutoPay, and the name, logo, colour, paywall text and prices come from the backend's `app_config` table. Modelled on the sibling project `../cash_alert`. Details: [09-deep-link-onboarding.md](../09-deep-link-onboarding.md).
+
+Both interfaces report to Mixpanel and the Facebook SDK, on Android only. Every event is listed in [10-analytics.md](../10-analytics.md).
 
 ## Commands
 
 ```sh
 flutter pub get
 flutter analyze            # must report no issues
-flutter test               # 46 tests, all must pass
-flutter build apk --debug  # verified working 2026-10-01
-flutter build apk          # release, verified working 2026-10-05
-flutter run
+flutter test               # 97 tests, all must pass
+flutter build apk --debug  # verified working 2026-10-13
+flutter build apk          # release, verified working 2026-10-13
+flutter run                              # talks to the real Evos Supabase project
+flutter run --dart-define=SUPABASE_URL=  # test mode: no SMS, code 123456, simulated payment
 ./tool/maestro.sh test .maestro                 # end-to-end flows; needs a device with the app installed
 ./tool/maestro.sh check-syntax <flow.yaml>      # no device needed
+./tool/setup_backend.sh check                   # read-only: what the Evos Supabase project has
 ./tool/deeplink.sh --check                      # proves the deep link works on the connected phone
 ./tool/deeplink.sh --fresh | --reset            # open the local link from a clean state | back to the normal app
 ```
@@ -41,16 +45,24 @@ Always run Maestro through `tool/maestro.sh`. A bare `maestro` or `java` fails o
 | Firestore reads and writes | `lib/services/notes_repository.dart` |
 | Root widget, interface switch | `lib/screens/app_gate.dart` |
 | Notes screens | `lib/screens/` (`auth_gate`, `sign_in_screen`, `notes_list_screen`, `note_editor_screen`, `profile_screen`) |
-| Onboarding screens | `lib/screens/onboarding/` (`details_form_screen`, `paywall_screen`, `member_home_screen`) |
+| Onboarding screens | `lib/screens/onboarding/` (`phone_screen`, `otp_screen`, `paywall_screen`, `maintenance_screen`) |
+| Backend name, colour and logo on those screens | `lib/widgets/brand.dart`, `lib/models/remote_config.dart`, provider `remoteConfigProvider` |
 | Play install referrer | `lib/services/install_referrer_service.dart`, `android/app/src/main/kotlin/com/spacewire/notes/MainActivity.kt` |
-| Supabase save of the form | `lib/services/leads_repository.dart`, `lib/supabase_options.dart` |
+| Supabase: phone sign-in, settings, subscription status | `lib/services/evos_backend.dart`, `lib/supabase_options.dart` |
+| Backend schema and edge functions (not deployed) | `supabase/migrations/`, `supabase/functions/` |
 | Deep link receiving, link host and path | `lib/services/deep_link_service.dart` |
-| Onboarding state model and device storage | `lib/models/onboarding.dart`, `lib/services/onboarding_store.dart` |
-| Payment interface and simulated gateway | `lib/services/payment_gateway.dart` |
-| Form validators | `lib/utils/validators.dart` |
-| Error-to-message mapping | `lib/utils/errors.dart` |
+| Onboarding stage model and device storage (stage, session, settings) | `lib/models/onboarding.dart`, `lib/services/onboarding_store.dart` |
+| Payment interface, Cashfree and simulated gateways | `lib/services/payment_gateway.dart`, `android/app/src/main/kotlin/com/spacewire/notes/payments/PaymentsChannel.kt` |
+| Analytics events (all of them) | `lib/services/analytics.dart`, provider `analyticsProvider` |
+| Mixpanel and Facebook SDK calls | `android/app/src/main/kotlin/com/spacewire/notes/analytics/` |
+| Analytics keys | `android/app/src/main/res/values/analytics_keys.xml` |
+| Install source for analytics | `lib/models/install_source.dart` |
+| Screen-view helper | `lib/widgets/track_view.dart` |
+| Mobile-number rule | `lib/utils/validators.dart` |
+| Error-to-message mapping, error codes for analytics | `lib/utils/errors.dart` |
 | Relative time formatting | `lib/utils/format.dart` |
 | Security rules | `firestore.rules` |
+| Test fakes for Supabase and Cashfree, and the app launch helper | `test/support/harness.dart` |
 | End-to-end flows | `.maestro/flows/`, shared steps in `.maestro/subflows/`, order in `.maestro/config.yaml` |
 | Firebase options | `lib/firebase_options.dart` (hand-written) |
 
@@ -70,11 +82,21 @@ Always run Maestro through `tool/maestro.sh`. A bare `maestro` or `java` fails o
 
 12. **`DeepLinkService.start()` runs before `runApp`, and `MaterialApp` has no `home`.** Either change makes Flutter push incoming link URLs as named routes. Keep `onGenerateInitialRoutes` and `onGenerateRoute` in `main.dart`.
 13. **The link host appears in two places that must match:** `kDeepLinkHost` in `deep_link_service.dart` and `android:host` in `AndroidManifest.xml`.
-14. **`deepLinkServiceProvider` and `onboardingStoreProvider` throw unless overridden.** `main()` overrides them; any test that pumps `NotesApp` must too. Copy `_launch` in `test/onboarding_flow_test.dart`.
+14. **`deepLinkServiceProvider` and `onboardingStoreProvider` throw unless overridden.** `main()` overrides them; any test that pumps `NotesApp` must too, and must override `evosBackendProvider` and `paymentGatewayProvider` with fakes. Use `launch` in `test/support/harness.dart`.
 15. **Never navigate on an onboarding stage change.** `AppGate` renders from `onboardingControllerProvider`.
-16. **Payment is simulated.** Do not describe it as real, and do not remove the "Test mode" notice while `isSimulated` is true. A real provider implements `PaymentGateway` and replaces `paymentGatewayProvider`.
-17. **Supabase: pure-Dart `supabase` only, never `supabase_flutter`,** and only `leads_repository.dart` imports it. The table is insert-only for `anon`; do not add `.select()` to the insert or it fails. Await the save; do not copy the un-awaited Firestore pattern.
-18. **The channel name `com.spacewire.notes/install_referrer` appears in both `MainActivity.kt` and `install_referrer_service.dart`** and must match.
+16. **Payment is Cashfree when Supabase is configured, simulated otherwise.** Do not remove either "Test mode" notice (paywall, code screen). Never remove the AutoPay sentence on the paywall or make it come from the backend: it is the statement that money is taken every month. The server, not the device, decides who has paid: never set the maintenance stage from anything but `signedIn`, `subscribed` or `refresh`.
+17. **Supabase: pure-Dart `supabase` only, never `supabase_flutter`,** and only `evos_backend.dart` imports it. The session is saved by hand in `OnboardingStore`; keep the `onAuthStateChange` listener that does it. Await Supabase calls; do not copy the un-awaited Firestore pattern.
+17a. **The Cashfree id and secret never reach the app.** They are private `app_config` rows read by edge functions. Never mark them `is_public`, never add them to `RemoteConfig`, and never add a write policy for `anon` or `authenticated` on any table.
+17d. **SMS settings are `app_config` rows** (`fast2sms`, `fast2sms_dlt_sender_id`, `fast2sms_dlt_te_id`, `send_sms_hook_secret`), all private, with function secrets only as a fallback. The owner keeps CashAlert's the same way; `../cash_alert`'s repository shows secrets instead and may be behind what is deployed.
+17b. **Do not deploy edge functions, push migrations, or edit `app_config` without the user's explicit go-ahead.** They act on a live project that takes payments.
+17c. **`cashfree_environment` must be the exact word `production` to take real money,** in both `app_config.ts` and `PaymentsChannel.kt`. Keep that default-to-sandbox rule.
+18. **The channel name `com.spacewire.notes/install_referrer` appears in both `MainActivity.kt` and `install_referrer_service.dart`** and must match. The same holds for `com.spacewire.notes/analytics` in `AnalyticsChannel.kt` and `analytics.dart`, and for `com.spacewire.notes/payments` in `PaymentsChannel.kt` and `payment_gateway.dart`. The UPI packages in `PaymentsChannel.kt` must each be listed under `<queries>` in `AndroidManifest.xml`.
+19. **Every analytics event is a method on `Analytics`,** and adding, renaming or removing one means updating [10-analytics.md](../10-analytics.md) in the same change. Never send note content, a phone number or a sign-in code; send `errorCode(error)`, never an error message. Never await analytics or call it from `build`.
+20. **Never send a simulated payment to Facebook as a purchase.** `Analytics.subscriptionSucceeded` skips `metaSubscribe` when `simulated` is true; keep that.
+21. **Do not put another app's Mixpanel token or Facebook keys in `analytics_keys.xml`,** and do not remove the two `false` Facebook entries in `AndroidManifest.xml`: they keep an unconfigured build from contacting Facebook.
+22. **Mixpanel, the Facebook SDK and the Cashfree SDK are Gradle dependencies used from Kotlin.** Do not add `mixpanel_flutter`, `facebook_app_events` or `flutter_cashfree_pg_sdk`.
+23. **Do not run `dart format` on existing files.** They are not formatter-clean, and it rewrites hundreds of unrelated lines.
+24. **The paywall shows no rating, subscriber count or social-proof line unless the backend sends one.** Do not hard-code any.
 
 ## Code style
 
@@ -82,11 +104,14 @@ Explicit types on everything, `const` where possible, relative imports in `lib/`
 
 ## Current state
 
-- `flutter analyze` clean, 46 of 46 tests passing, debug and release APKs build (2026-10-05). The release APK has not been installed or run.
-- **Supabase is not configured.** No URL, key or table exists yet, so no form has ever really been saved. A debug build logs `[leads] Supabase is not configured` and continues; a release build blocks at the form. Do not report saving as working.
+- `flutter analyze` clean, 97 of 97 tests passing, debug and release APKs build (2026-10-13). The release APK has not been installed or run.
+- **Onboarding sign-in works against the live backend; payment does not yet.** Supabase project `sqvlgiqypqvjykczuhgz` is the default in `lib/supabase_options.dart`. On 2026-10-13 a real SMS code was sent and verified from the test phone and the paywall shown. The Cashfree rows of `app_config` and `customer_email_domain` are empty and no Cashfree function has handled a request, so do not report payment as working. `supabase db push` and `functions deploy` were allowed by the permission system; `config push` (auth settings) was refused. The Supabase CLI is at `~/.local/bin/supabase` (not on the PATH); listing another project's secrets was refused too. Never edit an applied migration: add a new timestamped file. Deno is not installed. Do not report sign-in, settings, or payment as working against a server.
+- **Only test mode has run end to end.** A debug build made with `--dart-define=SUPABASE_URL=` (empty) accepts any number with the code `123456` and simulates the payment. A normal build talks to the real project and sends a real SMS. The Cashfree sheet has never been opened from this app.
+- **Never run `onboarding_deeplink` or type a made-up number into a normal build:** it would text a real stranger. Use a test-mode build, or a number the user owns.
+- **Analytics has no keys.** The Mixpanel token and Facebook keys are placeholders, so nothing is sent and no event has been seen in Mixpanel or Facebook. The current onboarding events have run in widget tests only. The sign-in and notes events, `identify` and the log-out reset have never run. Do not report analytics as working end to end.
 - **The Play Store referrer path has never run through Play.** It needs a build on a Play testing track. Do not report it as verified.
-- Maestro 2.11.0 is installed in `~/.maestro`. `deeplink_local` and `onboarding_deeplink` pass on the test phone. The five notes flows are **blocked at Google sign-in** (the phone's only account is a managed one demanding a lock screen) and nothing after sign-in has run. Do not report them as passing.
-- The onboarding member home is still a placeholder and iOS has no way in. Open items are in [07-known-issues.md](../07-known-issues.md#deep-link-onboarding). Ask before guessing.
+- Maestro 2.11.0 is installed in `~/.maestro`. `deeplink_local` and `onboarding_deeplink` passed on the test phone on 2026-10-13, then a test-mode assertion was added to the second and neither has run since: Maestro's on-device driver stopped starting (`DeviceServerDiedException`). Do not report them as passing on the current code. The five notes flows are **blocked at Google sign-in** (the phone's only account is a managed one demanding a lock screen) and nothing after sign-in has run. Do not report them as passing.
+- What is behind the paywall is not built (subscribers see the maintenance screen), and iOS has no way in. Open items are in [07-known-issues.md](../07-known-issues.md#deep-link-onboarding). Ask before guessing.
 - The test phone has the link domain approved for the app (a device setting). A device without that opens the link in a browser.
 - iOS has never been built on this machine. CocoaPods is not installed; the project uses Swift Package Manager.
 - Four suspected bugs are open and unconfirmed, the first being that log out leaves the Profile screen on a spinner. See [07-known-issues.md](../07-known-issues.md) before working on the editor, the list, or sign-out.

@@ -1,412 +1,654 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:notes/main.dart';
 import 'package:notes/models/onboarding.dart';
-import 'package:notes/providers.dart';
 import 'package:notes/services/deep_link_service.dart';
-import 'package:notes/services/leads_repository.dart';
-import 'package:notes/services/onboarding_store.dart';
+import 'package:notes/services/evos_backend.dart';
 import 'package:notes/services/payment_gateway.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-// These pump the real NotesApp. Firebase is never initialised: the only
-// Firebase-backed provider the signed-out path reads is authStateProvider,
-// which is overridden with a signed-out stream.
+import 'support/harness.dart';
 
-const String _link = 'https://$kDeepLinkHost/onboarding';
+const String _notesApp = 'Continue with Google';
+const String _phoneScreen = 'Welcome to Evos';
+const String _codeScreen = 'Enter the code';
+const String _maintenance = "We're under maintenance";
 
-class _FailingGateway extends SimulatedPaymentGateway {
-  const _FailingGateway() : super(delay: Duration.zero);
+/// What a device holds after signing in and reaching [stage].
+Map<String, Object> _saved(OnboardingStage stage, {bool signedIn = true}) =>
+    <String, Object>{
+      'onboarding_v1': OnboardingState(stage: stage).encode(),
+      if (signedIn) 'evos_session_v1': 'fake-session',
+    };
 
-  @override
-  Future<void> purchase(Plan plan) async => throw StateError('Card declined.');
-}
-
-class _CancelingGateway extends SimulatedPaymentGateway {
-  const _CancelingGateway() : super(delay: Duration.zero);
-
-  @override
-  Future<void> purchase(Plan plan) async => throw const PaymentCanceled();
-}
-
-/// Stands in for Supabase and records what would have been sent.
-class _FakeLeads implements LeadsRepository {
-  _FakeLeads({this.fail = false});
-
-  bool fail;
-  final List<LeadDetails> saved = <LeadDetails>[];
-
-  @override
-  Future<void> save(LeadDetails details) async {
-    await Future<void>.delayed(const Duration(milliseconds: 50));
-    if (fail) throw const LeadSaveFailure();
-    saved.add(details);
-  }
-}
-
-/// Starts the app the way `main()` does, minus Firebase.
-Future<void> _launch(
-  WidgetTester tester, {
-  String? coldStartLink,
-  String? installReferrer,
-  LeadsRepository? leads,
-  PaymentGateway gateway = const SimulatedPaymentGateway(
-    delay: Duration(milliseconds: 50),
-  ),
-}) async {
-  if (coldStartLink != null) {
-    tester.platformDispatcher.defaultRouteNameTestValue = coldStartLink;
-    addTearDown(tester.platformDispatcher.clearDefaultRouteNameTestValue);
-  }
-
-  final DeepLinkService deepLinks = DeepLinkService(tester.binding)..start();
-  addTearDown(deepLinks.dispose);
-  final OnboardingStore store = await OnboardingStore.open();
-
-  await tester.pumpWidget(
-    ProviderScope(
-      overrides: <Override>[
-        deepLinkServiceProvider.overrideWithValue(deepLinks),
-        onboardingStoreProvider.overrideWithValue(store),
-        paymentGatewayProvider.overrideWithValue(gateway),
-        installReferrerProvider.overrideWithValue(installReferrer),
-        leadsRepositoryProvider.overrideWithValue(leads ?? _FakeLeads()),
-        authStateProvider.overrideWith((Ref ref) => Stream<User?>.value(null)),
-      ],
-      child: const NotesApp(),
-    ),
-  );
-  await tester.pumpAndSettle();
-}
-
-/// Delivers a link the way the engine does while the app is running.
-Future<void> _openLinkWhileRunning(WidgetTester tester, String link) async {
-  await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
-    'flutter/navigation',
-    const JSONMethodCodec().encodeMethodCall(
-      MethodCall('pushRouteInformation', <String, Object?>{
-        'location': link,
-        'state': null,
-      }),
-    ),
-    (ByteData? _) {},
-  );
-  await tester.pumpAndSettle();
-}
-
-Finder _field(String label) => find.widgetWithText(TextFormField, label);
-
-Future<void> _fillForm(WidgetTester tester) async {
-  await tester.enterText(_field('Full name'), 'Asha Rao');
-  await tester.enterText(_field('Email'), 'asha@example.com');
-  await tester.enterText(_field('Phone'), '+91 98765 43210');
-  await tester.enterText(_field('Address'), '12 MG Road, Bengaluru');
-}
-
-Future<void> _tapContinue(WidgetTester tester) async {
-  await tester.ensureVisible(find.text('Continue'));
-  await tester.tap(find.text('Continue'));
-  await tester.pumpAndSettle();
-}
-
-Future<void> _tapSubscribe(WidgetTester tester) async {
-  final Finder button = find.textContaining('Subscribe for');
-  await tester.ensureVisible(button);
-  await tester.tap(button);
-  await tester.pumpAndSettle();
+Future<OnboardingStage> _savedStage() async {
+  final SharedPreferences prefs = await SharedPreferences.getInstance();
+  return OnboardingState.decode(prefs.getString('onboarding_v1')).stage;
 }
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
 
-  testWidgets('an ordinary launch shows the normal app', (tester) async {
-    await _launch(tester);
+  group('which interface', () {
+    testWidgets('an ordinary launch shows the normal app', (tester) async {
+      await launch(tester);
 
-    expect(find.text('Continue with Google'), findsOneWidget);
-    expect(find.text('Tell us about you'), findsNothing);
-  });
-
-  testWidgets('a cold-start onboarding link shows the details form',
-      (tester) async {
-    await _launch(tester, coldStartLink: _link);
-
-    expect(find.text('Tell us about you'), findsOneWidget);
-    expect(find.text('Continue with Google'), findsNothing);
-    // The link must not have been pushed as a named route.
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('the local test link at cold start shows the details form',
-      (tester) async {
-    await _launch(tester, coldStartLink: 'notes://onboarding');
-    expect(find.text('Tell us about you'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('the local test link opened while running shows the form',
-      (tester) async {
-    await _launch(tester);
-    await _openLinkWhileRunning(tester, 'notes://onboarding');
-    expect(find.text('Tell us about you'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('a cold-start link to anywhere else shows the normal app',
-      (tester) async {
-    await _launch(tester, coldStartLink: 'https://$kDeepLinkHost/other');
-
-    expect(find.text('Continue with Google'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('an install from a Play Store onboarding link shows the form',
-      (tester) async {
-    await _launch(
-      tester,
-      installReferrer: 'utm_source=mail&flow=onboarding',
-    );
-
-    expect(find.text('Tell us about you'), findsOneWidget);
-    expect(find.text('Continue with Google'), findsNothing);
-  });
-
-  testWidgets('an install from any other Play Store link shows the normal app',
-      (tester) async {
-    await _launch(
-      tester,
-      installReferrer: 'utm_source=google-play&utm_medium=organic',
-    );
-
-    expect(find.text('Continue with Google'), findsOneWidget);
-  });
-
-  testWidgets('Continue saves the trimmed details before the paywall',
-      (tester) async {
-    final _FakeLeads leads = _FakeLeads();
-    await _launch(tester, coldStartLink: _link, leads: leads);
-
-    await _fillForm(tester);
-    await tester.enterText(_field('Full name'), '  Asha Rao  ');
-    await tester.ensureVisible(find.text('Continue'));
-    await tester.tap(find.text('Continue'));
-    await tester.pump();
-
-    // Still on the form, busy, while the save is in flight.
-    expect(find.text('Tell us about you'), findsOneWidget);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    expect(leads.saved, isEmpty);
-
-    await tester.pumpAndSettle();
-
-    expect(find.text('Choose your plan'), findsOneWidget);
-    expect(leads.saved, hasLength(1));
-    expect(leads.saved.single.name, 'Asha Rao');
-    expect(leads.saved.single.email, 'asha@example.com');
-    expect(leads.saved.single.phone, '+91 98765 43210');
-    expect(leads.saved.single.address, '12 MG Road, Bengaluru');
-  });
-
-  testWidgets('a failed save shows an error, stays on the form, and can retry',
-      (tester) async {
-    final _FakeLeads leads = _FakeLeads(fail: true);
-    await _launch(tester, coldStartLink: _link, leads: leads);
-    await _fillForm(tester);
-
-    await _tapContinue(tester);
-
-    expect(find.text("We couldn't save your details."), findsOneWidget);
-    expect(find.text('Tell us about you'), findsOneWidget);
-    expect(find.text('Choose your plan'), findsNothing);
-    // What was typed is still there.
-    expect(find.text('Asha Rao'), findsOneWidget);
-
-    leads.fail = false;
-    await _tapContinue(tester);
-
-    expect(find.text('Choose your plan'), findsOneWidget);
-    expect(leads.saved, hasLength(1));
-  });
-
-  testWidgets('an invalid form sends nothing to the server', (tester) async {
-    final _FakeLeads leads = _FakeLeads();
-    await _launch(tester, coldStartLink: _link, leads: leads);
-
-    await _tapContinue(tester);
-
-    expect(leads.saved, isEmpty);
-  });
-
-  testWidgets('a link opened while running switches to the details form',
-      (tester) async {
-    await _launch(tester);
-    expect(find.text('Continue with Google'), findsOneWidget);
-
-    await _openLinkWhileRunning(tester, _link);
-
-    expect(find.text('Tell us about you'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('an unrelated link opened while running is ignored',
-      (tester) async {
-    await _launch(tester);
-
-    await _openLinkWhileRunning(tester, 'https://$kDeepLinkHost/other');
-
-    expect(find.text('Continue with Google'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('an incomplete form shows errors and does not advance',
-      (tester) async {
-    await _launch(tester, coldStartLink: _link);
-
-    await tester.enterText(_field('Email'), 'not-an-email');
-    await _tapContinue(tester);
-
-    expect(find.text('Enter your name.'), findsOneWidget);
-    expect(find.text('Enter a valid email address.'), findsOneWidget);
-    expect(find.text('Enter your phone number.'), findsOneWidget);
-    expect(find.text('Enter your address.'), findsOneWidget);
-    expect(find.text('Choose your plan'), findsNothing);
-  });
-
-  testWidgets('form, paywall and purchase lead to the member home',
-      (tester) async {
-    await _launch(tester, coldStartLink: _link);
-
-    await _fillForm(tester);
-    await _tapContinue(tester);
-
-    expect(find.text('Choose your plan'), findsOneWidget);
-    expect(find.text('Pick a plan to finish setting up, Asha.'), findsOneWidget);
-    expect(find.text('Test mode: no payment is taken.'), findsOneWidget);
-    // The first plan is preselected.
-    expect(find.text('Subscribe for ₹1,499 / year'), findsOneWidget);
-
-    await tester.tap(find.text('Monthly'));
-    await tester.pumpAndSettle();
-    expect(find.text('Subscribe for ₹199 / month'), findsOneWidget);
-
-    await _tapSubscribe(tester);
-
-    expect(find.text("You're all set"), findsOneWidget);
-    expect(find.text('Monthly plan · ₹199 / month'), findsOneWidget);
-    expect(find.text('Asha Rao'), findsOneWidget);
-    expect(find.text('asha@example.com'), findsOneWidget);
-    expect(find.text('+91 98765 43210'), findsOneWidget);
-    expect(find.text('12 MG Road, Bengaluru'), findsOneWidget);
-  });
-
-  testWidgets('back from the paywall returns to a pre-filled form',
-      (tester) async {
-    await _launch(tester, coldStartLink: _link);
-    await _fillForm(tester);
-    await _tapContinue(tester);
-
-    await tester.tap(find.byTooltip('Edit details'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Tell us about you'), findsOneWidget);
-    expect(find.text('Asha Rao'), findsOneWidget);
-    expect(find.text('asha@example.com'), findsOneWidget);
-  });
-
-  testWidgets('a failed payment shows an error and stays on the paywall',
-      (tester) async {
-    await _launch(
-      tester,
-      coldStartLink: _link,
-      gateway: const _FailingGateway(),
-    );
-    await _fillForm(tester);
-    await _tapContinue(tester);
-
-    await _tapSubscribe(tester);
-
-    expect(find.text('Card declined.'), findsOneWidget);
-    expect(find.text('Choose your plan'), findsOneWidget);
-    expect(find.text("You're all set"), findsNothing);
-  });
-
-  testWidgets('a cancelled payment stays on the paywall without an error',
-      (tester) async {
-    await _launch(
-      tester,
-      coldStartLink: _link,
-      gateway: const _CancelingGateway(),
-    );
-    await _fillForm(tester);
-    await _tapContinue(tester);
-
-    await _tapSubscribe(tester);
-
-    expect(find.text('Choose your plan'), findsOneWidget);
-    expect(find.text("You're all set"), findsNothing);
-    expect(find.textContaining('Subscribe for'), findsOneWidget);
-  });
-
-  testWidgets('the stage survives a restart with no link', (tester) async {
-    SharedPreferences.setMockInitialValues(<String, Object>{
-      'onboarding_v1': const OnboardingState(
-        stage: OnboardingStage.paywall,
-        details: LeadDetails(
-          name: 'Asha Rao',
-          email: 'asha@example.com',
-          phone: '9876543210',
-          address: '12 MG Road',
-        ),
-      ).encode(),
+      expect(find.text(_notesApp), findsOneWidget);
+      expect(find.text(_phoneScreen), findsNothing);
     });
 
-    await _launch(tester);
+    testWidgets('a cold-start onboarding link shows the mobile-number screen',
+        (tester) async {
+      await launch(tester, coldStartLink: onboardingLink);
 
-    expect(find.text('Choose your plan'), findsOneWidget);
-    expect(find.text('Continue with Google'), findsNothing);
+      expect(find.text(_phoneScreen), findsOneWidget);
+      expect(find.text(_notesApp), findsNothing);
+      // The link must not have been pushed as a named route.
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the local test link at cold start shows the mobile-number screen',
+        (tester) async {
+      await launch(tester, coldStartLink: 'notes://onboarding');
+      expect(find.text(_phoneScreen), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a link opened while running switches interface',
+        (tester) async {
+      await launch(tester);
+      expect(find.text(_notesApp), findsOneWidget);
+
+      await openLinkWhileRunning(tester, 'notes://onboarding');
+
+      expect(find.text(_phoneScreen), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a link to anywhere else shows the normal app', (tester) async {
+      await launch(tester, coldStartLink: 'https://$kDeepLinkHost/other');
+      expect(find.text(_notesApp), findsOneWidget);
+
+      await openLinkWhileRunning(tester, 'https://$kDeepLinkHost/other');
+      expect(find.text(_notesApp), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('an install from a Play Store onboarding link signs in',
+        (tester) async {
+      await launch(tester, installReferrer: 'utm_source=mail&flow=onboarding');
+
+      expect(find.text(_phoneScreen), findsOneWidget);
+      expect(find.text(_notesApp), findsNothing);
+    });
+
+    testWidgets('an install from any other Play Store link is the normal app',
+        (tester) async {
+      await launch(
+        tester,
+        installReferrer: 'utm_source=google-play&utm_medium=organic',
+      );
+
+      expect(find.text(_notesApp), findsOneWidget);
+    });
   });
 
-  testWidgets('progress is saved as the user advances', (tester) async {
-    await _launch(tester, coldStartLink: _link);
-    await _fillForm(tester);
-    await _tapContinue(tester);
-    await _tapSubscribe(tester);
+  group('mobile number', () {
+    testWidgets('Send code stays off until the number is valid',
+        (tester) async {
+      final Harness h = await launch(tester, coldStartLink: onboardingLink);
+      FilledButton button() =>
+          tester.widget<FilledButton>(find.byType(FilledButton));
 
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final OnboardingState saved =
-        OnboardingState.decode(prefs.getString('onboarding_v1'));
+      expect(button().onPressed, isNull);
 
-    expect(saved.stage, OnboardingStage.member);
-    expect(saved.planId, 'yearly');
-    expect(saved.details!.name, 'Asha Rao');
+      await tester.enterText(find.byType(TextField), '98765');
+      await tester.pump();
+      expect(button().onPressed, isNull);
+      // Not an error yet: the number is still being typed.
+      expect(find.text('Enter a valid 10-digit mobile number.'), findsNothing);
+
+      await tester.enterText(find.byType(TextField), '1234567890');
+      await tester.pump();
+      expect(button().onPressed, isNull);
+      expect(find.text('Enter a valid 10-digit mobile number.'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), phone);
+      await tester.pump();
+      expect(button().onPressed, isNotNull);
+      expect(h.backend.codesSentTo, isEmpty);
+    });
+
+    testWidgets('a pasted number loses its country code, not its digits',
+        (tester) async {
+      await launch(tester, coldStartLink: onboardingLink);
+
+      await tester.enterText(find.byType(TextField), '+91 98765 43210');
+      await tester.pump();
+
+      expect(find.text(phone), findsOneWidget);
+    });
+
+    testWidgets('Send code texts the number and opens the code screen',
+        (tester) async {
+      final Harness h = await launch(tester, coldStartLink: onboardingLink);
+
+      await tester.enterText(find.byType(TextField), phone);
+      await tester.pump();
+      await tester.tap(find.text('Send code'));
+      await tester.pump();
+
+      // Still here, busy, while the request is in flight.
+      expect(find.text(_phoneScreen), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      await tester.pumpAndSettle();
+
+      expect(find.text(_codeScreen), findsOneWidget);
+      expect(find.text('Sent by SMS to +91 98765 43210'), findsOneWidget);
+      expect(h.backend.codesSentTo, <String>['+919876543210']);
+    });
+
+    testWidgets('a failed send shows why, stays, and can be retried',
+        (tester) async {
+      final Harness h = await launch(
+        tester,
+        coldStartLink: onboardingLink,
+        setup: (FakeBackend b) => b.sendError = BackendError.network,
+      );
+
+      await sendCode(tester);
+
+      expect(find.textContaining("We couldn't reach the server."),
+          findsOneWidget);
+      expect(find.text(_phoneScreen), findsOneWidget);
+      // What was typed is still there.
+      expect(find.text(phone), findsOneWidget);
+
+      h.backend.sendError = null;
+      await tester.tap(find.text('Send code'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(_codeScreen), findsOneWidget);
+    });
+
+    testWidgets('too many requests is said plainly', (tester) async {
+      await launch(
+        tester,
+        coldStartLink: onboardingLink,
+        setup: (FakeBackend b) => b.sendError = BackendError.tooManyRequests,
+      );
+
+      await sendCode(tester);
+
+      expect(find.textContaining('Too many attempts.'), findsOneWidget);
+    });
   });
 
-  testWidgets('opening the link again keeps the progress made',
-      (tester) async {
-    await _launch(tester, coldStartLink: _link);
-    await _fillForm(tester);
-    await _tapContinue(tester);
-    expect(find.text('Choose your plan'), findsOneWidget);
+  group('code', () {
+    testWidgets('the sixth digit signs in without a button', (tester) async {
+      await launch(tester, coldStartLink: onboardingLink);
+      await sendCode(tester);
 
-    await _openLinkWhileRunning(tester, _link);
+      await tester.enterText(find.byType(TextField), '12345');
+      await tester.pumpAndSettle();
+      expect(find.text(_codeScreen), findsOneWidget);
 
-    expect(find.text('Choose your plan'), findsOneWidget);
+      await enterCode(tester);
+
+      expect(find.text('Try Now'), findsOneWidget);
+      expect(await _savedStage(), OnboardingStage.paywall);
+    });
+
+    testWidgets('a wrong code says so, empties the boxes, and can be retried',
+        (tester) async {
+      await launch(tester, coldStartLink: onboardingLink);
+      await sendCode(tester);
+
+      await enterCode(tester, '000000');
+
+      expect(find.textContaining("That code isn't right"), findsOneWidget);
+      expect(find.text(_codeScreen), findsOneWidget);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        isEmpty,
+      );
+
+      await enterCode(tester);
+
+      expect(find.text('Try Now'), findsOneWidget);
+    });
+
+    testWidgets('Change number goes back with the number still filled in',
+        (tester) async {
+      await launch(tester, coldStartLink: onboardingLink);
+      await sendCode(tester);
+
+      await tester.tap(find.byTooltip('Change number'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(_phoneScreen), findsOneWidget);
+      expect(find.text(phone), findsOneWidget);
+    });
+
+    testWidgets('a new code can be asked for after the wait, not before',
+        (tester) async {
+      final Harness h = await launch(tester, coldStartLink: onboardingLink);
+      await sendCode(tester);
+
+      expect(find.text('Resend code'), findsNothing);
+      expect(find.textContaining('Resend code in 0:'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 31));
+
+      await tester.tap(find.text('Resend code'));
+      await tester.pumpAndSettle();
+
+      expect(h.backend.codesSentTo, hasLength(2));
+      // And the wait starts again.
+      expect(find.text('Resend code'), findsNothing);
+    });
+
+    testWidgets('someone who already pays skips the paywall', (tester) async {
+      await launch(
+        tester,
+        coldStartLink: onboardingLink,
+        setup: (FakeBackend b) => b.subscribed = true,
+      );
+
+      await signIn(tester);
+
+      expect(find.text(_maintenance), findsOneWidget);
+      expect(find.text('Try Now'), findsNothing);
+    });
   });
 
-  testWidgets('the debug reset returns to the normal app', (tester) async {
-    await _launch(tester, coldStartLink: _link);
-    await _fillForm(tester);
-    await _tapContinue(tester);
-    await _tapSubscribe(tester);
+  group('paywall', () {
+    testWidgets('shows the name, prices and words the backend sent',
+        (tester) async {
+      await launch(
+        tester,
+        coldStartLink: onboardingLink,
+        setup: (FakeBackend b) => b.config = <String, String>{
+          'app_name': 'Zed',
+          'paywall_title_prefix': '7-Day',
+          'paywall_title_suffix': 'Pass',
+          'cashfree_trial_amount': '5',
+          'cashfree_recurring_amount': '499',
+          'paywall_features': 'Alpha|Beta',
+          'paywall_rating_value': '4.6',
+          'paywall_rating_caption': '(2,000 ratings)',
+          'paywall_social_proofs': 'Asha just joined',
+        },
+      );
+      expect(find.text('Welcome to Zed'), findsOneWidget);
 
-    await tester.tap(find.text('Reset deep-link flow (debug only)'));
-    await tester.pumpAndSettle();
+      await signIn(tester);
 
-    expect(find.text('Continue with Google'), findsOneWidget);
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    expect(prefs.getString('onboarding_v1'), isNull);
+      expect(find.text('Zed'), findsOneWidget);
+      expect(find.text('7-Day'), findsOneWidget);
+      expect(find.text('Pass'), findsOneWidget);
+      // The pill and the large price.
+      expect(find.text('₹5'), findsNWidgets(2));
+      expect(find.text('₹499'), findsOneWidget);
+      expect(find.text('Alpha'), findsOneWidget);
+      expect(find.text('Beta'), findsOneWidget);
+      expect(find.text('4.6'), findsOneWidget);
+      expect(find.text('(2,000 ratings)'), findsOneWidget);
+      expect(find.text('Asha just joined'), findsOneWidget);
+      expect(
+        find.text(
+          '₹5 today for the first 24 hours, then ₹499 every month by UPI '
+          'AutoPay. Cancel any time in your UPI app.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('takes its colour from the backend', (tester) async {
+      await launch(
+        tester,
+        coldStartLink: onboardingLink,
+        setup: (FakeBackend b) =>
+            b.config = <String, String>{'theme_color': '#0B7A5C'},
+      );
+
+      final ThemeData theme =
+          Theme.of(tester.element(find.text(_phoneScreen)));
+      expect(
+        theme.colorScheme.primary,
+        ColorScheme.fromSeed(
+          seedColor: const Color(0xFF0B7A5C),
+          dynamicSchemeVariant: DynamicSchemeVariant.fidelity,
+        ).primary,
+      );
+      // And not the notes app's indigo.
+      expect(
+        theme.colorScheme.primary,
+        isNot(ColorScheme.fromSeed(seedColor: Colors.indigo).primary),
+      );
+    });
+
+    testWidgets('with nothing sent, shows no rating and no social proof',
+        (tester) async {
+      await launch(tester, coldStartLink: onboardingLink);
+      await signIn(tester);
+
+      expect(find.byIcon(Icons.star_rounded), findsNothing);
+      expect(find.byIcon(Icons.auto_awesome), findsNothing);
+      expect(find.text('₹3'), findsNWidgets(2));
+      expect(find.text('₹299'), findsOneWidget);
+    });
+
+    testWidgets('Try Now pays with the first UPI app and opens maintenance',
+        (tester) async {
+      final Harness h = await launch(tester, coldStartLink: onboardingLink);
+      await signIn(tester);
+      expect(find.text('PhonePe'), findsOneWidget);
+
+      await tester.tap(find.text('Try Now'));
+      await tester.pump();
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      await tester.pumpAndSettle();
+
+      expect(find.text(_maintenance), findsOneWidget);
+      expect(h.gateway.paidWith, <String>['PhonePe']);
+      expect(await _savedStage(), OnboardingStage.maintenance);
+    });
+
+    testWidgets('another UPI app can be chosen', (tester) async {
+      final Harness h = await launch(tester, coldStartLink: onboardingLink);
+      await signIn(tester);
+
+      await tester.tap(find.text('PhonePe'));
+      await tester.pumpAndSettle();
+      expect(find.text('Pay with UPI AutoPay'), findsOneWidget);
+      await tester.tap(find.text('Google Pay'));
+      await tester.pumpAndSettle();
+
+      await tapTryNow(tester);
+
+      expect(h.gateway.paidWith, <String>['Google Pay']);
+    });
+
+    testWidgets('with no UPI app, Try Now says what to install and pays nothing',
+        (tester) async {
+      final Harness h = await launch(
+        tester,
+        coldStartLink: onboardingLink,
+        gateway: FakeGateway(apps: const <UpiApp>[]),
+      );
+      await signIn(tester);
+      expect(find.text('Select UPI App'), findsOneWidget);
+
+      await tapTryNow(tester);
+
+      expect(find.textContaining('No UPI app was found'), findsOneWidget);
+      expect(h.gateway.paidWith, isEmpty);
+    });
+
+    testWidgets('a declined payment shows an error and stays', (tester) async {
+      await launch(
+        tester,
+        coldStartLink: onboardingLink,
+        gateway: FakeGateway(
+          failure: const PaymentFailure(PaymentError.declined),
+        ),
+      );
+      await signIn(tester);
+
+      await tapTryNow(tester);
+
+      expect(find.textContaining("The payment didn't go through."),
+          findsOneWidget);
+      expect(find.text('Try Now'), findsOneWidget);
+      expect(find.text(_maintenance), findsNothing);
+    });
+
+    testWidgets('a cancelled payment stays without an error', (tester) async {
+      await launch(
+        tester,
+        coldStartLink: onboardingLink,
+        gateway: FakeGateway(failure: const PaymentCanceled()),
+      );
+      await signIn(tester);
+
+      await tapTryNow(tester);
+
+      expect(find.text('Try Now'), findsOneWidget);
+      expect(find.textContaining("didn't go through"), findsNothing);
+      expect(find.text(_maintenance), findsNothing);
+    });
+
+    testWidgets('a payment still being confirmed is not called a failure',
+        (tester) async {
+      await launch(
+        tester,
+        coldStartLink: onboardingLink,
+        gateway: FakeGateway(
+          failure: const PaymentFailure(PaymentError.pending),
+        ),
+      );
+      await signIn(tester);
+
+      await tapTryNow(tester);
+
+      expect(find.textContaining("We're still confirming your payment."),
+          findsOneWidget);
+    });
+
+    testWidgets('paying when already subscribed just lets the user in',
+        (tester) async {
+      await launch(
+        tester,
+        coldStartLink: onboardingLink,
+        gateway: FakeGateway(
+          failure: const BackendFailure(BackendError.alreadySubscribed),
+        ),
+      );
+      await signIn(tester);
+
+      await tapTryNow(tester);
+
+      expect(find.text(_maintenance), findsOneWidget);
+    });
+
+    testWidgets('only a simulated gateway shows the test-mode notice',
+        (tester) async {
+      await launch(
+        tester,
+        coldStartLink: onboardingLink,
+        gateway: FakeGateway(isSimulated: true),
+      );
+      await signIn(tester);
+      expect(find.text('Test mode: no payment is taken.'), findsOneWidget);
+    });
+
+    testWidgets('a real gateway shows no test-mode notice', (tester) async {
+      await launch(tester, coldStartLink: onboardingLink);
+      await signIn(tester);
+      expect(find.text('Test mode: no payment is taken.'), findsNothing);
+    });
+
+    testWidgets('Log out returns to the mobile-number screen, not to notes',
+        (tester) async {
+      final Harness h = await launch(tester, coldStartLink: onboardingLink);
+      await signIn(tester);
+
+      await tester.tap(find.text('Log out'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(_phoneScreen), findsOneWidget);
+      expect(find.text(_notesApp), findsNothing);
+      expect(h.backend.signOuts, 1);
+      expect(h.backend.isSignedIn, isFalse);
+      expect(await _savedStage(), OnboardingStage.signIn);
+    });
+  });
+
+  group('maintenance', () {
+    testWidgets('shows the message the backend sent', (tester) async {
+      SharedPreferences.setMockInitialValues(
+        _saved(OnboardingStage.maintenance),
+      );
+      await launch(
+        tester,
+        setup: (FakeBackend b) => b
+          ..subscribed = true
+          ..config = <String, String>{
+            'maintenance_title': 'Back on Monday',
+            'maintenance_message': 'We are upgrading our servers.',
+          },
+      );
+
+      expect(find.text('Back on Monday'), findsOneWidget);
+      expect(find.text('We are upgrading our servers.'), findsOneWidget);
+    });
+
+    testWidgets('Check again picks up a changed message', (tester) async {
+      SharedPreferences.setMockInitialValues(
+        _saved(OnboardingStage.maintenance),
+      );
+      final Harness h = await launch(
+        tester,
+        setup: (FakeBackend b) => b.subscribed = true,
+      );
+      expect(find.text(_maintenance), findsOneWidget);
+
+      await tester.tap(find.text('Check again'));
+      await tester.pumpAndSettle();
+      expect(find.text('Nothing new yet. Check back later.'), findsOneWidget);
+
+      h.backend.config = <String, String>{'maintenance_title': 'Almost there'};
+      await tester.tap(find.text('Check again'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Almost there'), findsOneWidget);
+    });
+  });
+
+  group('restart', () {
+    testWidgets('the stage survives a restart with no link', (tester) async {
+      SharedPreferences.setMockInitialValues(_saved(OnboardingStage.paywall));
+
+      await launch(tester);
+
+      expect(find.text('Try Now'), findsOneWidget);
+      expect(find.text(_notesApp), findsNothing);
+    });
+
+    testWidgets('the saved settings brand the very first frame',
+        (tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        ..._saved(OnboardingStage.signIn, signedIn: false),
+        'evos_config_v1': '{"app_name":"Zed"}',
+      });
+
+      // The server cannot be reached, so only what was saved can show.
+      await launch(
+        tester,
+        setup: (FakeBackend b) => b.configError = BackendError.network,
+      );
+
+      expect(find.text('Welcome to Zed'), findsOneWidget);
+    });
+
+    testWidgets('a paid stage with no sign-in on the device signs in again',
+        (tester) async {
+      SharedPreferences.setMockInitialValues(
+        _saved(OnboardingStage.maintenance, signedIn: false),
+      );
+
+      await launch(tester);
+
+      expect(find.text(_phoneScreen), findsOneWidget);
+    });
+
+    testWidgets('a stage saved by the details-form build signs in',
+        (tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'onboarding_v1': '{"stage":"member","planId":"yearly","details":null}',
+      });
+
+      await launch(tester);
+
+      expect(find.text(_phoneScreen), findsOneWidget);
+    });
+
+    testWidgets('a subscription that has ended returns to the paywall',
+        (tester) async {
+      SharedPreferences.setMockInitialValues(
+        _saved(OnboardingStage.maintenance),
+      );
+
+      await launch(tester, setup: (FakeBackend b) => b.subscribed = false);
+
+      expect(find.text('Try Now'), findsOneWidget);
+      expect(await _savedStage(), OnboardingStage.paywall);
+    });
+
+    testWidgets('a payment the device never heard about is found at start',
+        (tester) async {
+      SharedPreferences.setMockInitialValues(_saved(OnboardingStage.paywall));
+
+      await launch(tester, setup: (FakeBackend b) => b.subscribed = true);
+
+      expect(find.text(_maintenance), findsOneWidget);
+    });
+
+    testWidgets('offline, a subscriber is not sent back to the paywall',
+        (tester) async {
+      SharedPreferences.setMockInitialValues(
+        _saved(OnboardingStage.maintenance),
+      );
+
+      await launch(
+        tester,
+        setup: (FakeBackend b) => b
+          ..configError = BackendError.network
+          ..subscriptionError = BackendError.network,
+      );
+
+      expect(find.text(_maintenance), findsOneWidget);
+    });
+
+    testWidgets('a sign-in the server no longer accepts signs in again',
+        (tester) async {
+      SharedPreferences.setMockInitialValues(
+        _saved(OnboardingStage.maintenance),
+      );
+
+      await launch(
+        tester,
+        setup: (FakeBackend b) => b.subscriptionError = BackendError.signedOut,
+      );
+
+      expect(find.text(_phoneScreen), findsOneWidget);
+    });
+
+    testWidgets('opening the link again keeps the progress made',
+        (tester) async {
+      await launch(tester, coldStartLink: onboardingLink);
+      await signIn(tester);
+      expect(find.text('Try Now'), findsOneWidget);
+
+      await openLinkWhileRunning(tester, onboardingLink);
+
+      expect(find.text('Try Now'), findsOneWidget);
+    });
+
+    testWidgets('the debug reset returns to the normal app, signed out',
+        (tester) async {
+      await launch(tester, coldStartLink: onboardingLink);
+      await signIn(tester);
+      await tapTryNow(tester);
+
+      await tester.tap(find.text('Reset deep-link flow (debug only)'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(_notesApp), findsOneWidget);
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('onboarding_v1'), isNull);
+      expect(prefs.getString('evos_session_v1'), isNull);
+    });
   });
 }

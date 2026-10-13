@@ -44,7 +44,8 @@ class AuthService {
 
   Stream<User?> authStateChanges() => _auth.authStateChanges();
 
-  Future<void> signInWithGoogle() async {
+  /// Returns true when this sign-in created the account.
+  Future<bool> signInWithGoogle() async {
     final GoogleSignIn google = GoogleSignIn.instance;
     if (!google.supportsAuthenticate()) {
       throw StateError(
@@ -68,9 +69,10 @@ class AuthService {
     // asserts only that one of idToken/accessToken is non-null, and obtaining an
     // access token in 7.x means a second consent prompt through
     // account.authorizationClient — for no benefit to Firebase.
-    await _auth.signInWithCredential(
+    final UserCredential credential = await _auth.signInWithCredential(
       GoogleAuthProvider.credential(idToken: idToken),
     );
+    return credential.additionalUserInfo?.isNewUser ?? false;
   }
 
   Future<GoogleSignInAccount> _authenticate(GoogleSignIn google) async {

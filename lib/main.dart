@@ -4,8 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 
 import 'firebase_options.dart';
+import 'models/install_source.dart';
 import 'providers.dart';
 import 'screens/app_gate.dart';
+import 'services/analytics.dart';
 import 'services/auth_service.dart';
 import 'services/deep_link_service.dart';
 import 'services/install_referrer_service.dart';
@@ -18,6 +20,11 @@ Future<void> main() async {
   // Before runApp, so this observer is asked about an incoming link ahead of
   // the one WidgetsApp registers. See DeepLinkService.start.
   final DeepLinkService deepLinks = DeepLinkService(binding)..start();
+
+  // The same stateless object analyticsProvider hands out; made here because
+  // these two events come before there is a ProviderScope to read it from.
+  const Analytics analytics = Analytics(MethodChannelAnalyticsClient());
+  analytics.appOpened();
 
   final OnboardingStore onboardingStore;
   String? installReferrer;
@@ -36,6 +43,7 @@ Future<void> main() async {
       installReferrer = await const InstallReferrerService().fetch();
       if (installReferrer != null) {
         await onboardingStore.markInstallReferrerChecked();
+        analytics.installAttributed(InstallSource.parse(installReferrer));
       }
     }
   } catch (error) {

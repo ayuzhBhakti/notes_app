@@ -51,4 +51,13 @@ flutter {
 dependencies {
     // Used directly by MainActivity.kt to read the Play Store install referrer.
     implementation("com.android.installreferrer:installreferrer:2.2")
+    // Used directly by the analytics/ package, over a method channel, rather
+    // than through two Flutter plugins. Keys: res/values/analytics_keys.xml.
+    implementation("com.mixpanel.android:mixpanel-android:8.2.4")
+    implementation("com.facebook.android:facebook-core:18.3.0")
+    // Cashfree UPI AutoPay, used directly by the payments/ package over a
+    // method channel. The same version as the CashAlert app.
+    implementation("com.cashfree.pg:api:2.4.0")
+    implementation("com.cashfree.pg:core:2.4.0")
+    implementation("com.cashfree.pg:ui:2.4.0")
 }

@@ -2,12 +2,12 @@
 
 [Maestro](https://github.com/mobile-dev-inc/Maestro) drives the real app on a device or emulator through YAML flows. It covers what the unit tests cannot: sign-in, Firestore writes, navigation and snackbars.
 
-**Status (2026-10-01), on a Samsung SM-M127G, Android 13:**
+**Status (2026-10-13), on a Samsung SM-M127G, Android 13:**
 
 | Flow | Result |
 |------|--------|
 | `deeplink_local` | Passes |
-| `onboarding_deeplink` | Passes |
+| `onboarding_deeplink` | Passes on a test-mode build (`--dart-define=SUPABASE_URL=`). On a normal build it stops, by design, before "Send code" |
 | `create_note`, `edit_note`, `delete_and_undo`, `empty_note_is_discarded`, `profile_logout` | Blocked at Google sign-in. Launch and the tap on "Continue with Google" work; the phone's only Google account is a managed one that demands a lock screen. Nothing after sign-in has run. |
 
 Expect to adjust selectors in the five notes flows the first time they get past sign-in.
@@ -76,8 +76,8 @@ Screenshots and logs from failed runs are written to `~/.maestro/tests/`.
 
 | Flow | Tag | Checks |
 |------|-----|--------|
-| [deeplink_local](../.maestro/flows/deeplink_local.yaml) | onboarding, deeplink | The local link `notes://onboarding`: no link shows the normal app; link while running, after restart, and from cold start all show the form. Also run by `./tool/deeplink.sh --check`. |
-| [onboarding_deeplink](../.maestro/flows/onboarding_deeplink.yaml) | onboarding | The link opens the form; validation; paywall, back, plan change, purchase; member home survives a restart |
+| [deeplink_local](../.maestro/flows/deeplink_local.yaml) | onboarding, deeplink | The local link `notes://onboarding`: no link shows the normal app; link while running, after restart, and from cold start all show the mobile-number screen. Also run by `./tool/deeplink.sh --check`. |
+| [onboarding_deeplink](../.maestro/flows/onboarding_deeplink.yaml) | onboarding | The link opens the mobile-number screen; code screen, back and forward; the code signs in; paywall and its AutoPay sentence; simulated payment; maintenance survives a restart; log out. Only valid in test mode: against a real backend it would text a real number and stop at the code. |
 | [create_note](../.maestro/flows/create_note.yaml) | notes | A new note appears in the list with its title and body preview |
 | [edit_note](../.maestro/flows/edit_note.yaml) | notes | The editor opens pre-filled, and a saved edit shows in the list |
 | [delete_and_undo](../.maestro/flows/delete_and_undo.yaml) | notes | Swipe-to-delete removes the row; Undo brings the note back |
@@ -108,11 +108,13 @@ Screenshots and logs from failed runs are written to `~/.maestro/tests/`.
 | `note_body_field` | Body field | [note_editor_screen.dart](../lib/screens/note_editor_screen.dart) |
 | `note_save_button` | Save icon | [note_editor_screen.dart](../lib/screens/note_editor_screen.dart) |
 | `note_delete_button` | Delete icon | [note_editor_screen.dart](../lib/screens/note_editor_screen.dart) |
-| `onboarding_name_field`, `onboarding_email_field`, `onboarding_phone_field`, `onboarding_address_field` | Details form fields | [details_form_screen.dart](../lib/screens/onboarding/details_form_screen.dart) |
-| `paywall_back_button` | Back arrow on the paywall | [paywall_screen.dart](../lib/screens/onboarding/paywall_screen.dart) |
-| `paywall_plan_<id>` (`yearly`, `monthly`) | Plan cards | [paywall_screen.dart](../lib/screens/onboarding/paywall_screen.dart) |
+| `phone_field`, `send_code_button` | Mobile-number screen | [phone_screen.dart](../lib/screens/onboarding/phone_screen.dart) |
+| `otp_field`, `otp_verify_button`, `otp_resend_button` | Code screen. `otp_field` is the one invisible field under the six boxes | [otp_screen.dart](../lib/screens/onboarding/otp_screen.dart) |
+| `paywall_upi_selector`, `paywall_try_now_button`, `paywall_logout_button` | Paywall bottom bar and top bar | [paywall_screen.dart](../lib/screens/onboarding/paywall_screen.dart) |
+| `upi_app_<package>` | A row in the UPI app sheet | [paywall_screen.dart](../lib/screens/onboarding/paywall_screen.dart) |
+| `maintenance_check_again_button`, `maintenance_logout_button` | Maintenance screen | [maintenance_screen.dart](../lib/screens/onboarding/maintenance_screen.dart) |
 
-The onboarding identifiers are confirmed on a device. The five notes identifiers are not yet.
+Of the onboarding identifiers, `phone_field`, `otp_field` and `maintenance_logout_button` are used by a flow and confirmed on a device; the rest are not selected by any flow yet. The five notes identifiers are not confirmed.
 
 Tooltips are not used as selectors because Android 9 and later do not expose them as text. Hint text is not used because it disappears once the field has content.
 

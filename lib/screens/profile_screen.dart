@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers.dart';
+import '../services/analytics.dart';
 import '../utils/errors.dart';
+import '../widgets/track_view.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -27,62 +29,65 @@ class ProfileScreen extends ConsumerWidget {
         ? user.displayName!.trim()
         : 'Signed in';
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Profile')),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 24),
-        children: <Widget>[
-          Center(
-            child: CircleAvatar(
-              radius: 44,
-              backgroundColor: theme.colorScheme.primaryContainer,
-              foregroundImage:
-                  photoUrl == null ? null : NetworkImage(photoUrl),
-              child: Text(
-                _initials(name),
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  color: theme.colorScheme.onPrimaryContainer,
+    return TrackView(
+      onView: (Analytics analytics) => analytics.profileViewed(),
+      child: Scaffold(
+        appBar: AppBar(title: const Text('Profile')),
+        body: ListView(
+          padding: const EdgeInsets.symmetric(vertical: 24),
+          children: <Widget>[
+            Center(
+              child: CircleAvatar(
+                radius: 44,
+                backgroundColor: theme.colorScheme.primaryContainer,
+                foregroundImage:
+                    photoUrl == null ? null : NetworkImage(photoUrl),
+                child: Text(
+                  _initials(name),
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    color: theme.colorScheme.onPrimaryContainer,
+                  ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: 16),
-          Center(
-            child: Text(name, style: theme.textTheme.titleLarge),
-          ),
-          if (user.email != null) ...<Widget>[
-            const SizedBox(height: 4),
+            const SizedBox(height: 16),
             Center(
-              child: Text(
-                user.email!,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+              child: Text(name, style: theme.textTheme.titleLarge),
+            ),
+            if (user.email != null) ...<Widget>[
+              const SizedBox(height: 4),
+              Center(
+                child: Text(
+                  user.email!,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 32),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.fingerprint),
+              title: const Text('User ID'),
+              subtitle: Text(user.uid),
+            ),
+            const Divider(),
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: OutlinedButton.icon(
+                onPressed: busy ? null : () => _confirmSignOut(context, ref),
+                icon: const Icon(Icons.logout),
+                label: const Text('Log out'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: theme.colorScheme.error,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
               ),
             ),
           ],
-          const SizedBox(height: 32),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.fingerprint),
-            title: const Text('User ID'),
-            subtitle: Text(user.uid),
-          ),
-          const Divider(),
-          const SizedBox(height: 16),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: OutlinedButton.icon(
-              onPressed: busy ? null : () => _confirmSignOut(context, ref),
-              icon: const Icon(Icons.logout),
-              label: const Text('Log out'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: theme.colorScheme.error,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

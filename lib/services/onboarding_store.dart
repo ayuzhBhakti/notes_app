@@ -4,8 +4,9 @@ import '../models/onboarding.dart';
 
 /// The only file in the app that imports `shared_preferences`.
 ///
-/// Onboarding state is device-local because the flow runs before sign-in, so
-/// there is no uid to store it under in Firestore.
+/// The onboarding stage is device-local so the first frame is already the
+/// right interface, before any network call. Whether the user has paid is
+/// not decided here: the server is asked, and the stage follows its answer.
 class OnboardingStore {
   const OnboardingStore(this._prefs);
 
@@ -24,7 +25,31 @@ class OnboardingStore {
   Future<void> save(OnboardingState state) =>
       _prefs.setString(_key, state.encode());
 
-  Future<void> clear() => _prefs.remove(_key);
+  /// The stage and the sign-in go together: a device back in the normal app
+  /// must not keep a phone session nobody can reach. The fetched settings
+  /// stay, they are not personal.
+  Future<void> clear() async {
+    await _prefs.remove(_key);
+    await _prefs.remove(_sessionKey);
+  }
+
+  static const String _sessionKey = 'evos_session_v1';
+
+  /// The phone sign-in, as the JSON the Supabase client hands out. Lives here
+  /// because the pure-Dart client keeps a session in memory only.
+  String? loadSession() => _prefs.getString(_sessionKey);
+
+  Future<void> saveSession(String session) =>
+      _prefs.setString(_sessionKey, session);
+
+  Future<void> clearSession() => _prefs.remove(_sessionKey);
+
+  static const String _configKey = 'evos_config_v1';
+
+  /// The backend's settings as last fetched. See `decodeConfigRows`.
+  String? loadConfig() => _prefs.getString(_configKey);
+
+  Future<void> saveConfig(String config) => _prefs.setString(_configKey, config);
 
   static const String _referrerCheckedKey = 'install_referrer_checked';
 

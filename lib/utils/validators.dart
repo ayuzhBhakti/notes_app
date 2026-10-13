@@ -1,50 +1,26 @@
-// Field validators for the onboarding details form. Each returns an error
-// message, or null when the value is acceptable.
-//
-// The upper limits mirror the column checks on the Supabase table. Without
-// them an over-long value would pass here, be rejected by the server, and
-// show the user a "couldn't save" message that says nothing about length.
+// The mobile number on the sign-in screen. India only: the code is sent by an
+// Indian SMS route and the subscription is paid over UPI.
 
-String? validateName(String? value) {
-  final String text = value?.trim() ?? '';
-  if (text.isEmpty) return 'Enter your name.';
-  if (text.length < 2) return 'That name is too short.';
-  if (text.length > 200) return 'That name is too long.';
-  return null;
-}
-
-// Deliberately loose: something@something.tld with no spaces. Whether the
-// address exists can only be proven by sending mail to it.
-final RegExp _email = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
-
-String? validateEmail(String? value) {
-  final String text = value?.trim() ?? '';
-  if (text.isEmpty) return 'Enter your email address.';
-  if (text.length > 320 || !_email.hasMatch(text)) {
-    return 'Enter a valid email address.';
+/// The ten digits of an Indian mobile number, or null if [value] is not one.
+/// Spaces and dashes are how people type numbers, and a pasted number often
+/// carries +91 or a leading 0.
+String? normalizeIndianMobile(String? value) {
+  String digits = (value ?? '').replaceAll(RegExp(r'[\s\-().]'), '');
+  if (digits.startsWith('+91')) {
+    digits = digits.substring(3);
+  } else if (digits.length == 12 && digits.startsWith('91')) {
+    digits = digits.substring(2);
+  } else if (digits.length == 11 && digits.startsWith('0')) {
+    digits = digits.substring(1);
   }
-  return null;
+  // Mobile numbers start with 6 to 9; anything else is a landline or a typo.
+  return RegExp(r'^[6-9]\d{9}$').hasMatch(digits) ? digits : null;
 }
 
-String? validatePhone(String? value) {
-  final String text = value?.trim() ?? '';
-  if (text.isEmpty) return 'Enter your phone number.';
-  // The text is stored as typed, so its length is limited as well as its
-  // digit count.
-  if (text.length > 32) return 'Enter a valid phone number.';
-  // Spaces, dashes, dots and brackets are how people type numbers.
-  final String digits = text.replaceAll(RegExp(r'[\s\-().]'), '');
-  // 7 to 15 digits is the E.164 range; a leading + is optional.
-  if (!RegExp(r'^\+?\d{7,15}$').hasMatch(digits)) {
-    return 'Enter a valid phone number.';
-  }
-  return null;
-}
-
-String? validateAddress(String? value) {
-  final String text = value?.trim() ?? '';
-  if (text.isEmpty) return 'Enter your address.';
-  if (text.length < 5) return 'That address is too short.';
-  if (text.length > 1000) return 'That address is too long.';
-  return null;
+/// An error message, or null when the value is acceptable.
+String? validateIndianMobile(String? value) {
+  if ((value ?? '').trim().isEmpty) return 'Enter your mobile number.';
+  return normalizeIndianMobile(value) == null
+      ? 'Enter a valid 10-digit mobile number.'
+      : null;
 }

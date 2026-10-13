@@ -1,0 +1,9 @@
+# Only what differs from the Supabase CLI defaults. Run `supabase link --project-ref <ref>` once.
+project_id = "evos"
+
+# Cashfree and Supabase Auth call these two without a user token. Each checks its own signature.
+[functions.cashfree-webhook]
+verify_jwt = false
+
+[functions.sms-hook]
+verify_jwt = false
