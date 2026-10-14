@@ -17,6 +17,192 @@ One entry per completed task, newest first. Keep entries short: what changed, wh
 
 ---
 
+## 2026-10-14 — Notes title on the avatar's row; delete_and_undo fixed
+
+**Request:** put "Notes" in line with the profile avatar and move the content up.
+**Changes:** `notes_list_screen.dart`: `SliverAppBar.large` replaced by a pinned `SliverAppBar` (72 high) whose title is "Notes" in `headlineMedium` bold, level with the avatar; the count's padding matches the title. `.maestro/flows/delete_and_undo.yaml`: the swipe has `duration: 100`.
+**Why:** the large bar left a tall empty band above the notes. The flow's slow swipe from the title stopped at the element's edge, short of `Dismissible`'s 40% threshold; a fling dismisses regardless of distance. A real swipe (`adb shell input swipe`) deleted a note and showed Undo, so the app was not at fault.
+**Verified:** on the SM-M127G: screenshot of the new header; Maestro `create_note`, `edit_note`, `delete_and_undo`, `empty_note_is_discarded` all pass. `check-syntax` OK on the changed flow. `flutter analyze` one info (`package_names`); `flutter test` 112 of 112. Both leftover test notes deleted; the account has only the user's own note.
+**Docs updated:** 03-app-flow (list header), 07-known-issues (Maestro row), 08-e2e-testing (status, flick note), ai/AGENT_CONTEXT (flow status), this log.
+**Follow-ups:** `profile_logout` not run (signs the phone out).
+
+---
+
+## 2026-10-14 — Notes interface redesign
+
+**Request:** make the notes app's UI more attractive without changing any feature.
+**Changes:** new `lib/theme.dart` (`buildNotesTheme`: the launcher icon's violet with the fidelity scheme, amber accent, Poppins, rounded cards, buttons, dialogs and floating snackbars), used by `main.dart`. Poppins Regular/Medium/SemiBold/Bold and `OFL.txt` in `assets/fonts/`, registered in `pubspec.yaml`. New `widgets/evos_mark.dart` (the launcher icon drawn from the SVG's geometry) and `widgets/user_avatar.dart`. `sign_in_screen.dart`: soft violet glow, the mark, three feature lines, a full-width button at the bottom, tinted banners. `notes_list_screen.dart`: `SliverAppBar.large`, the avatar as the profile button, note count, card list, rounded swipe background, new empty and error states. `note_tile.dart`: a card with title, three-line preview and time; title and preview in their own full-width `Semantics(container: true)`. `note_editor_screen.dart`: large title, accent rule, filled round Save button. `profile_screen.dart`: violet gradient header, User ID card, full-width Log out. The onboarding screens are untouched (`BrandShell` builds its own theme).
+**Why:** the old theme was a generic indigo that matched neither the icon nor the website. Every text, identifier, tooltip and behaviour is kept, so the flows and tests still apply. The card's texts needed their own semantics nodes: merged, the title could not be found by Maestro (the old `ListTile` merged the same way, which no flow had reached before).
+**Verified:** `flutter analyze` one info (`package_names`); `flutter test` 112 of 112. List, editor and profile looked at on the SM-M127G in light and dark (dark mode set with `cmd uimode` and put back); sign-in rendered in a throwaway widget test in both modes, then deleted. Maestro: `create_note`, `edit_note`, `empty_note_is_discarded` pass. `delete_and_undo` failed (the swipe from the title fell short); fixed by making the title full width, but the phone disconnected before a rerun. `profile_logout` not run. Three leftover test notes from failed runs were deleted; one, "Maestro undo 1791976758301", is still in the account.
+**Docs updated:** 01-overview (theme), 02-architecture (new files), 03-app-flow (what each screen shows), 06-conventions (new "Look" section), 07-known-issues (Maestro and analytics rows), 08-e2e-testing (status, semantics note), ai/AGENT_CONTEXT (file table, rule 11, state).
+**Follow-ups:** see the next entry for `delete_and_undo` and the leftover note. The website's drawn notes list still shows the old look.
+
+---
+
+## 2026-10-14 — End-to-end check of the notes app
+
+**Request:** verify whether the notes app works end to end. Notes features only, not onboarding (the user stopped a run of the whole `.maestro` folder for that reason).
+**Changes:** none in the code. Built a test-mode debug APK (`--dart-define=SUPABASE_URL=`) and installed it on the SM-M127G. Cleared the app's data with `./tool/deeplink.sh --reset`, because the phone was still in the onboarding stage from earlier testing.
+**Verified:** `flutter analyze` one info (`package_names`); `flutter test` 112 of 112. Maestro's driver starts again. `create_note` failed at Google sign-in: the account sheet opened, the account was tapped, then sign-in came back as a cancel ("Sign-in keeps getting dismissed"). The other four notes flows were not run, since all start with the same sign-in. Nothing after sign-in has run on a device: creating, editing, deleting and undo, the empty-note discard, profile and log out are covered by widget tests only.
+**Docs updated:** 08-e2e-testing (status of the notes flows), ai/AGENT_CONTEXT (Maestro and sign-in state, onboarding-stage reset note).
+**Follow-ups:** add a personal Google test account to the phone, and confirm the debug SHA-1 `67:1C:D4:1B:BC:14:83:62:08:A8:C4:72:A8:CA:ED:3A:DC:3B:D9:D3` is registered in Firebase. Then run the five notes flows one by one.
+
+---
+
+## 2026-10-14 — Public website (notes app only)
+
+**Request:** a simple HTML website like the owner's other apps, showing only the notes features and not the second (onboarding) part.
+**Changes:** new `website/`, modelled on `../cash_alert/website` (plain HTML, one stylesheet, Poppins): `index.html` (hero with the notes list drawn in HTML, six features, three steps, FAQ), `privacy-policy.html`, `terms-of-service.html`, `delete-user-data.html`, `contact.html`, `404.html`, `css/styles.css`, `robots.txt`, `.htaccess`, and `assets/` (favicon and logo sized from `tool/app_icon/`). Operator `Spacewire` (owner's answer). The pages were generated once by a script kept outside the repo; edit the HTML directly.
+**Why:** every claim on the home page is a notes behaviour from 03-app-flow. The legal pages describe all data the app collects, including mobile number, SMS, Supabase, Cashfree, Mixpanel, Meta and the advertising ID, in general terms and without saying who sees which interface: a privacy policy that left them out would be false for some users and fails Play's requirements. The Play button's referrer carries only `utm_` keys, so it never starts onboarding.
+**Verified:** no broken local links; no page contains "onboarding", "paywall", "maintenance", `notes://` or `flow=`. Home looked at in headless Chrome at 1280 px and at 390 px (in an iframe, because headless Chrome will not size a window below 500 px); privacy at 390 px. One fix from that: the drawn phone's text was centred on narrow screens. `flutter test` 112 of 112; `flutter analyze` one info (`package_names`, from `name: Evos` in `pubspec.yaml`, not from this task). Not uploaded; `.htaccess` untested on a host.
+**Docs updated:** 01-overview, 07-known-issues (new Website section; deletion gap; removed the stale app-label line), README (what-to-update row), ai/AGENT_CONTEXT (rule 25, file table, state, test count, git line).
+**Follow-ups:** the real support email (replace `support@evos.example` everywhere), a domain (then canonical URLs, Open Graph image, sitemap), owner review of the legal text, upload.
+
+---
+
+## 2026-10-14 — "Something went wrong on our side" when paying: diagnosis
+
+**Request:** find the real cause of the error shown when paying, and plan the fix.
+**Found:**
+- The message is what the app shows for any `BackendError.server`, so it said nothing about the cause.
+- The attempt was not in the test phone's log: the app's data had been cleared since (the log shows a fresh install attribution and the notes sign-in screen).
+- Probing `cashfree-webhook` without a signature (it loads the settings before checking the signature) answered 401 "Invalid webhook signature", so `cashfree_app_id` and `cashfree_secret_key` are both non-empty. Their values were not read.
+- Remaining causes, from the function's code: `customer_email_domain` empty; `cashfree_environment` still `sandbox` with CashAlert's production keys (Cashfree answers 401); a stray `$0` or space pasted into the id or secret, as happened with three other rows; a plan or request Cashfree refuses.
+**Changes:** `create-cashfree-subscription` returns a `code` with every failure (redeployed). `BackendFailure.code`; the app shows "Error code: …" under the message and uses the code as the analytics `reason`. One widget test added.
+**Verified:** `flutter analyze lib` clean. The test suite was not run: it cannot load while `pubspec.yaml` has `name: Evos`. Debug and release APKs built; debug installed on the test phone with its log cleared.
+**Docs updated:** 09-deep-link-onboarding, 10-analytics.
+**Follow-ups:** the owner retries the payment and reports the code.
+
+## 2026-10-14 — Evos logo and app icon
+
+**Request:** create a logo for the app and use it as the app icon.
+**Changes:**
+- The mark: a white "E" (stem and three rounded arms, the middle one shorter) with an amber spark at the top right, on a violet gradient (#7C3AED to #4C1D95, matching the default `theme_color`). Drawn on the 108-unit adaptive-icon grid.
+- `tool/app_icon/evos_square.svg`, `evos_rounded.svg`, `evos_circle.svg`, and `make_icons.sh`, which renders them with Quick Look and resizes with `sips` into all Android legacy mipmaps (`ic_launcher`, `ic_launcher_round`) and the 15 iOS icons (alpha removed, as the App Store requires), plus `evos_logo_1024.png` and `evos_icon_512.png`.
+- Android 8+: adaptive icon in `mipmap-anydpi-v26/` from vector `drawable/ic_launcher_foreground.xml` and `ic_launcher_background.xml`, with a `monochrome` layer for themed icons. Manifest gained `android:roundIcon`.
+- The link fallback page shows the same mark.
+**Why:** no image tool is installed; a Flutter canvas renderer run as a test hung in `toImage`, so it was replaced by the SVG and Quick Look route.
+**Verified:** the iOS PNGs have no alpha channel. `aapt2 dump badging` of the new debug APK: label "Evos", icon `res/mipmap-anydpi-v26/ic_launcher.xml`. The APK is installed on the test phone; the home screen was not looked at, to avoid disturbing the owner's use of the phone. `flutter analyze` and `flutter test` were not run: they fail while `pubspec.yaml` has `name: Evos` (see the previous entry), a change awaiting the owner's decision.
+**Docs updated:** 01-overview, 07-known-issues, 09-deep-link-onboarding, AGENT_CONTEXT.
+**Follow-ups:** look at the icon on the home screen; restore `name: notes` once allowed.
+
+## 2026-10-14 — App renamed Evos
+
+**Request:** change the app name to Evos everywhere instead of notes.
+**Changes:** Android `android:label` "Evos"; iOS `CFBundleDisplayName` and `CFBundleName` "Evos"; `MaterialApp.title` "Evos" (recent-apps name in the notes interface); startup error "Evos couldn't start"; the notes sign-in screen heading "Evos".
+**Kept, on purpose:** the package id `com.spacewire.notes` (changing it makes a different app: Firebase, the Cashfree whitelist, `assetlinks.json` and installed copies all name it), the Dart package `notes`, the Firebase project, the link domain `notes-f36b3.web.app`, and words that describe notes as a feature ("Notes" over the list, "New note"). The launcher icon is still Flutter's default.
+**Verified:** not by tests: `pubspec.yaml` was changed by someone else to `name: Evos`, which breaks every `package:notes/` import, so `flutter analyze` reports 241 errors and the tests do not load. Restoring `name: notes` was proposed to the owner and awaits an answer. The debug APK builds with the new name.
+**Docs updated:** 01-overview, 03-app-flow, 07-known-issues, 09-deep-link-onboarding.
+**Follow-ups:** an Evos launcher icon.
+
+## 2026-10-14 — "Reset deep-link flow" removed everywhere
+
+**Request:** remove the reset deep-link flow button from everywhere.
+**Changes:** the debug-only button is gone from the mobile-number and maintenance screens; `OnboardingController.reset()` and `OnboardingStore.clear()`, used only by it, are deleted. The test of the reset is replaced by one checking no screen offers a way back.
+**Consequence:** in every build, the only way back to the notes app is clearing the app's data (`./tool/deeplink.sh --reset`, or Android settings), which also clears `install_referrer_checked`, so a referrer install would re-enter onboarding on the next launch.
+**Verified:** `flutter analyze` clean, 111 of 111 tests. Debug APK rebuilt and installed on the test phone.
+**Docs updated:** 05-setup-and-build, 09-deep-link-onboarding.
+**Follow-ups:** none.
+
+## 2026-10-14 — "Log out" removed from the paywall
+
+**Request:** remove the logout button from the paywall.
+**Changes:** `paywall_screen.dart`: the header is the logo and name only; `paywall_logout_button` is gone. Log out remains on the maintenance screen. The flow and analytics tests that logged out from the paywall now do it from maintenance; one new test checks the paywall has none.
+**Consequence:** a signed-in user who has not paid cannot change their number from inside the app; clearing the app's data is the only way.
+**Verified:** `flutter analyze` clean, 111 of 111 tests.
+**Docs updated:** 02-architecture, 08-e2e-testing, 09-deep-link-onboarding, AGENT_CONTEXT.
+**Follow-ups:** none.
+
+## 2026-10-14 — Paywall video sized to its own shape
+
+**Request:** the video was cropped; size the card to the video's ratio.
+**Changes:** `_PreviewVideo` in `paywall_screen.dart` no longer uses a fixed 180-high card with cover fit. The card is full width at the video's aspect ratio, capped at 45% of the screen height (narrower and centred if capped), 16:9 until the video has loaded.
+**Verified:** `flutter analyze` clean, 110 of 110. On the test phone (debug build, opened without any input sent): the backend's video shown whole, about square, under the heading. The backend logo now shows in the header too, after the owner corrected its URL.
+**Seen, not explained:** in both screenshots the video showed the play button, not playing, although the player had asked for audio focus, which it does on `play()`. Whether it autoplays when the owner opens the paywall has not been confirmed.
+**Docs updated:** 09-deep-link-onboarding.
+**Follow-ups:** confirm autoplay on the phone.
+
+## 2026-10-14 — Country selector on the mobile-number screen
+
+**Request:** a country code selector, because users can be from any country.
+**Changes:**
+- New `lib/models/country.dart` (`Country`, about 190 countries, flags from ISO codes, India default).
+- `validators.dart`: `normalizeNationalNumber` / `validateNationalNumber`; India keeps its strict rule, others get 6 digits to the E.164 limit, trunk 0 and pasted code removed.
+- `PhoneAuthState` carries the `country`; `requestCode(country, phone)`; E.164 built from it. The code screen shows the chosen code.
+- `phone_screen.dart`: flag, code and chevron in the field (`country_picker`), searchable sheet; per-country formatter; a number invalid for the new country is cleared.
+- `OTP Requested` gained `country` (ISO code). New `BackendError.countryNotSupported` and its message.
+- `sms-hook` refuses non-Indian numbers with `sms_country_not_supported` (HTTP 422) instead of sending them to Fast2SMS; redeployed.
+- Tests: 3 widget, 4 unit. 110 total.
+**Why:** the selector was asked for, but delivery and payment are India-only (Fast2SMS DLT, UPI AutoPay). A clear refusal beats a code that never arrives.
+**Verified:** `flutter analyze` clean, 110 of 110. Debug build installed on the test phone; a screenshot showed the country sheet open, being used by the owner at the time, so no further input was sent to the phone.
+**Not verified:** a non-Indian number against the live hook (the refusal path has not run for real), and how Supabase Auth passes the hook's message through: the app recognises it by text.
+**Docs updated:** 02-architecture, 07-known-issues, 08-e2e-testing, 09-deep-link-onboarding, 10-analytics, AGENT_CONTEXT.
+**Follow-ups:** decide whether other countries should be served (second SMS provider, a non-UPI payment) or the list cut to India.
+
+## 2026-10-14 — Mobile-number screen redesigned around app screenshots
+
+**Request:** the screen "is not looking good"; make it professional. Then: the carousel shows app screenshots of the use cases.
+**Changes (`phone_screen.dart`):**
+- Header with the small logo and name; one heading ("Welcome to <name>") with a shorter subtitle.
+- Carousel as one rounded card taking all spare height: title on top in the brand colour, the screenshot shown whole (`BoxFit.contain`) with phone-like rounded corners and a shadow, pill-shaped dots; on a light tint of the brand colour, because the fidelity scheme's container colour is nearly as dark as the brand. Images are decoded at drawn height (`cacheHeight`); the next page stays built (`allowImplicitScrolling`) instead of precaching full-size files. Phone-shaped placeholder while loading or on error.
+- New `_PhoneField`: `+91` and a divider always visible, sample-number hint, no border until focused.
+- "Send code" moved directly under the field, with "We'll send a 6-digit code by SMS." under it. Debug reset made small.
+- Layout: the form keeps its own height (scrolling only if the keyboard leaves less), and the carousel takes the rest, removing the empty band under the form.
+**Verified:** `flutter analyze` clean, 103 of 103 tests. On the test phone (debug build): the card, field and button as intended; with the keyboard open the carousel hides, the field keeps focus and the form fits above the keyboard. The backend's three slide URLs (`https://placehold.co/360x720$0`) return 404 because of the stray `$0`, so only the placeholder has been seen, not a real screenshot.
+**Mistake:** a tap sent with adb to open the keyboard landed on "Reset deep-link flow (debug only)", which returned the phone to the notes app and cleared its Evos sign-in. The link was reopened, so the phone is back on the mobile-number screen, signed out.
+**Docs updated:** 09-deep-link-onboarding.
+**Follow-ups:** fix the slide URLs; look at real screenshots on the phone.
+
+## 2026-10-14 — Carousel on the mobile-number screen, images from the backend
+
+**Request:** the login screen carousel CashAlert has, with the image URLs managed by the backend.
+**Changes:**
+- `RemoteConfig.loginSlides` (`LoginSlide`: image URL and title), from the public rows `login_slide_images` and `login_slide_titles`, `|`-separated and paired by position; non-https images dropped after pairing.
+- `phone_screen.dart`: `_LoginCarousel` (title above, `PageView` of images, dots; advances every 2 s like CashAlert's `AUTO_SLIDE_INTERVAL_MS`, swipeable, timer restarts after each change, images precached). With slides the screen takes CashAlert's layout, centred, and the field no longer autofocuses; the carousel hides while the keyboard is open. The form keeps one position in the tree in both states, so the field keeps focus.
+- Migration `20261014130000_login_slides.sql`, applied with `supabase db push`.
+- Tests: four widget tests, one parsing test. 103 total.
+**Verified:** `flutter analyze` clean, 103 of 103. Release APK (59.1 MB) built and installed on the test phone. Both rows readable with the publishable key.
+**Not verified:** the carousel on a phone; both rows are blank.
+**Docs updated:** 02-architecture, 08-e2e-testing, 09-deep-link-onboarding, AGENT_CONTEXT.
+**Follow-ups:** fill the two rows and look at the screen on the phone.
+
+## 2026-10-14 — A link testers can open without the Play Store
+
+**Request:** a deep link to share with the team, with the APK, that opens the Evos flow.
+**Changes:** new Firebase Hosting site for `notes-f36b3.web.app`: `firebase.json` (`appAssociation: NONE`), `.firebaserc`, `web_links/.well-known/assetlinks.json` (package and the debug-key SHA-256, which signs both APKs), `web_links/onboarding/index.html` (fallback page with an `intent://` button naming the package), `web_links/index.html`. `.firebase/` git-ignored.
+**Why:** a sideloaded app gets no install referrer, the `notes://` link exists only in debug builds and is not tappable in chat apps, and the HTTPS link opens a browser unless the domain is verified. Hosting `assetlinks.json` verifies it for every phone that installs the APK afterwards.
+**Verified:** the JSON files parse; the SHA-256 matches `~/.android/debug.keystore`. The domain currently answers "Site Not Found".
+**Not verified:** not deployed (the Firebase CLI is not installed; deploying is the owner's step), so neither verification nor the fallback page has been seen on a phone.
+**Docs updated:** 09-deep-link-onboarding, AGENT_CONTEXT.
+**Follow-ups:** deploy, then reinstall the APK on the test phone and check `adb shell pm get-app-links com.spacewire.notes` reports the domain verified.
+
+## 2026-10-14 — Preview video on the paywall, URL from the backend
+
+**Request:** add the video section to the paywall, as CashAlert has, with the URL managed from the backend.
+**Changes:**
+- `pubspec.yaml`: `video_player` ^2.11.1 (resolved 2.11.1, from the local cache).
+- `RemoteConfig.previewVideoUrl`, read from the public `app_config` row `paywall_video_url` (https only).
+- `paywall_screen.dart`: `_PreviewVideo`, in the preview card's place. Autoplays with sound, loops, cover-fit, tap to pause or play, spinner while loading, paused while a payment runs. Falls back to the picture, or no card, when it cannot play.
+- New migration `20261014120000_paywall_video.sql` (the row, blank), applied to the Evos project with `supabase db push`.
+- Tests: one widget test (a video that cannot play leaves a working paywall), parsing assertions. 98 total.
+**Why:** one URL rather than CashAlert's per-language `subscription_videos` table, because Evos has one language. Sound on, because CashAlert's plays with sound.
+**Verified:** `flutter analyze` clean, 98 of 98 tests, release APK built (59 MB) and installed on the test phone. The row is readable with the publishable key. CashAlert's public preview video answers with `video/mp4`.
+**Not verified:** playback on a phone; the row is still blank.
+**Docs updated:** 01-overview, 02-architecture, 07-known-issues, 09-deep-link-onboarding, AGENT_CONTEXT.
+**Follow-ups:** fill `paywall_video_url` and look at the paywall on the phone.
+
+## 2026-10-14 — Readiness check before sending an APK to a tester
+
+**Request:** is the Evos flow working fine, and how to send a debug APK to a tester.
+**Changes:** none to code.
+**Verified:**
+- The owner signed in again with the same number: `OTP Verified` with `new_user: false`, paywall shown.
+- Fresh `flutter build apk --debug` (192 MB) and `flutter build apk` (58 MB). The release APK was installed on the test phone, opened from `https://notes-f36b3.web.app/onboarding`, stayed signed in after a force-stop and showed the paywall, with no crash in the log. It is now the build on the test phone.
+- The paywall offered no UPI app on the test phone. Paytm is installed but has never been opened (`stopped=true notLaunched=true`), and Android resolves no activity for `upi://pay`, so this is the phone's state; detection on a phone with a set-up UPI app is unchecked.
+**Not verified:** "Try Now" has still never been tapped against Cashfree.
+**Docs updated:** 07-known-issues, AGENT_CONTEXT.
+**Follow-ups:** first real payment; the Evos webhook; the CashAlert webhook fix; an Evos SMS template.
+
 ## 2026-10-13 — Phone sign-in live; webhook ignores other apps' mandates
 
 **Request:** finish and verify the OTP setup, then what is next.

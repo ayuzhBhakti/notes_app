@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:video_player/video_player.dart';
 
 import '../../models/remote_config.dart';
 import '../../providers.dart';
@@ -11,7 +12,8 @@ import '../../widgets/brand.dart';
 
 /// Third screen of the deep-link flow: the trial offer, paid by UPI AutoPay.
 ///
-/// Laid out like the CashAlert paywall: heading with a pill, rating, preview,
+/// Laid out like the CashAlert paywall, without its "Log out": heading with a
+/// pill, rating, preview,
 /// feature badges, the two prices, a line of social proof, and a bottom bar
 /// with the UPI app on the left and "Try Now" on the right. The words, prices
 /// and picture come from the backend; a part with nothing to show is left out.
@@ -91,23 +93,13 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       body: SafeArea(
         child: Column(
           children: <Widget>[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 12, 0),
-              child: Row(
-                children: <Widget>[
-                  const Expanded(child: BrandHeader()),
-                  Semantics(
-                    identifier: 'paywall_logout_button',
-                    child: TextButton(
-                      onPressed: busy
-                          ? null
-                          : () => ref
-                              .read(onboardingControllerProvider.notifier)
-                              .signOut(),
-                      child: const Text('Log out'),
-                    ),
-                  ),
-                ],
+            // No "Log out" here, by decision: the paywall leads only forward.
+            // The maintenance screen still has one.
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 0),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: BrandHeader(),
               ),
             ),
             Expanded(
@@ -123,7 +115,16 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                         caption: config.ratingCaption,
                       ),
                     ],
-                    if (config.previewImageUrl != null) ...<Widget>[
+                    if (config.previewVideoUrl != null) ...<Widget>[
+                      const SizedBox(height: 22),
+                      _PreviewVideo(
+                        // A new URL from the backend starts a new player.
+                        key: ValueKey<String>(config.previewVideoUrl!),
+                        url: config.previewVideoUrl!,
+                        fallbackImageUrl: config.previewImageUrl,
+                        paused: busy,
+                      ),
+                    ] else if (config.previewImageUrl != null) ...<Widget>[
                       const SizedBox(height: 22),
                       _Preview(url: config.previewImageUrl!),
                     ],
@@ -385,6 +386,173 @@ class _Preview extends StatelessWidget {
             // price and the button around.
             errorBuilder: (BuildContext _, Object _, StackTrace? _) =>
                 const SizedBox.shrink(),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The backend's video in the preview card: starts by itself, with sound,
+/// loops, and pauses or plays on a tap, as CashAlert's does. Unlike
+/// CashAlert's, it is never cropped: the card takes the video's shape. It is
+/// paused while a payment runs, and the plugin pauses it while the app is in
+/// the background.
+///
+/// If the video cannot be played the picture is shown instead, or nothing.
+class _PreviewVideo extends StatefulWidget {
+  const _PreviewVideo({
+    super.key,
+    required this.url,
+    required this.fallbackImageUrl,
+    required this.paused,
+  });
+
+  final String url;
+  final String? fallbackImageUrl;
+
+  /// True while a payment runs.
+  final bool paused;
+
+  @override
+  State<_PreviewVideo> createState() => _PreviewVideoState();
+}
+
+class _PreviewVideoState extends State<_PreviewVideo> {
+  late final VideoPlayerController _controller =
+      VideoPlayerController.networkUrl(Uri.parse(widget.url));
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_onPlayerChanged);
+    _start();
+  }
+
+  Future<void> _start() async {
+    try {
+      await _controller.initialize();
+      await _controller.setLooping(true);
+      if (!widget.paused) await _controller.play();
+    } catch (_) {
+      // A bad URL, a format the phone cannot play, or no network. The paywall
+      // works without the video, so this is not reported to the user.
+      if (mounted) setState(() => _failed = true);
+    }
+  }
+
+  void _onPlayerChanged() {
+    if (_controller.value.hasError && !_failed) {
+      setState(() => _failed = true);
+    }
+  }
+
+  @override
+  void didUpdateWidget(_PreviewVideo oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_controller.value.isInitialized || widget.paused == oldWidget.paused) {
+      return;
+    }
+    // The UPI app comes to the front during a payment; the video waits.
+    widget.paused ? _controller.pause() : _controller.play();
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_onPlayerChanged);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _toggle() {
+    if (!_controller.value.isInitialized) return;
+    _controller.value.isPlaying ? _controller.pause() : _controller.play();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_failed) {
+      final String? image = widget.fallbackImageUrl;
+      return image == null ? const SizedBox.shrink() : _Preview(url: image);
+    }
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    // A tall video must not push the price and the button off the screen.
+    final double maxHeight = MediaQuery.sizeOf(context).height * 0.45;
+
+    return Semantics(
+      identifier: 'paywall_video',
+      label: 'Preview video',
+      button: true,
+      child: GestureDetector(
+        onTap: _toggle,
+        child: ValueListenableBuilder<VideoPlayerValue>(
+          valueListenable: _controller,
+          builder: (BuildContext context, VideoPlayerValue value, _) =>
+              LayoutBuilder(
+            builder: (BuildContext context, BoxConstraints box) {
+              // The card takes the video's own shape, so nothing is cropped:
+              // full width, and the height that width implies. A video too
+              // tall for that is shown narrower, centred, still whole.
+              // Until the video says its shape, a 16:9 card holds its place.
+              final double ratio = value.isInitialized && value.aspectRatio > 0
+                  ? value.aspectRatio
+                  : 16 / 9;
+              double width = box.maxWidth;
+              double height = width / ratio;
+              if (height > maxHeight) {
+                height = maxHeight;
+                width = height * ratio;
+              }
+
+              return Center(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOut,
+                  width: width,
+                  height: height,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: ColoredBox(
+                      color: colors.surfaceContainerHighest,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: <Widget>[
+                          if (value.isInitialized) VideoPlayer(_controller),
+                          if (!value.isInitialized || value.isBuffering)
+                            Center(
+                              child: SizedBox.square(
+                                dimension: 32,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 3,
+                                  color: colors.primary,
+                                ),
+                              ),
+                            )
+                          else if (!value.isPlaying)
+                            Center(
+                              child: DecoratedBox(
+                                decoration: const BoxDecoration(
+                                  color: Color(0x99000000),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(10),
+                                  child: Icon(
+                                    Icons.play_arrow_rounded,
+                                    size: 32,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
           ),
         ),
       ),

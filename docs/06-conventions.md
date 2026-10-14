@@ -10,6 +10,12 @@ These describe how the existing code is written. New code should match.
 - **Private widgets** (`_Banner`, `_EmptyView`, `_ErrorView`) live in the file of the screen that uses them. Move a widget to `lib/widgets/` only when a second screen needs it.
 - **Lints:** `flutter_lints` defaults with no overrides. `flutter analyze` must report no issues.
 
+## Look
+
+- **Colours and type come from the theme.** The notes interface's theme is `buildNotesTheme` in [lib/theme.dart](../lib/theme.dart). Use `Theme.of(context)` colours and text styles; the only literal colours are the brand constants there (`kBrandViolet`, `kBrandDeepViolet`, `kBrandAmber`, `kBrandGradient`).
+- **A gradient's stops are opaque.** Fading a translucent colour into an opaque one blends the full-strength colour through the middle. Pre-mix with `Color.alphaBlend` instead, as the sign-in glow does.
+- **A tappable card merges its texts.** An `InkWell` or `ListTile` exposes all the text inside it as one accessibility node, so a Maestro flow cannot find the title alone. Wrap each text a flow selects on in `Semantics(container: true)`, full width so a swipe from it starts mid-card, as [note_tile.dart](../lib/widgets/note_tile.dart) does.
+
 ## Comments
 
 Comments explain why, not what. The typical comment in this codebase records a decision or a trap: why a future is not awaited, why a field is nullable, what a plugin version changed. Keep that standard. Do not add comments that restate the code.

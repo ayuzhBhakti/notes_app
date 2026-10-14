@@ -4,13 +4,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:notes/main.dart';
-import 'package:notes/providers.dart';
-import 'package:notes/services/analytics.dart';
-import 'package:notes/services/deep_link_service.dart';
-import 'package:notes/services/evos_backend.dart';
-import 'package:notes/services/onboarding_store.dart';
-import 'package:notes/services/payment_gateway.dart';
+import 'package:Evos/main.dart';
+import 'package:Evos/providers.dart';
+import 'package:Evos/services/analytics.dart';
+import 'package:Evos/services/deep_link_service.dart';
+import 'package:Evos/services/evos_backend.dart';
+import 'package:Evos/services/onboarding_store.dart';
+import 'package:Evos/services/payment_gateway.dart';
 
 // Shared by the widget tests that pump the real NotesApp. Firebase is never
 // initialised: the only Firebase-backed provider the signed-out path reads is

@@ -137,7 +137,7 @@ The referrer only exists for installs made through Play. `adb install` and `flut
 
 ### The app is stuck in the onboarding interface
 
-That is by design once the link has been opened. In a debug build, tap "Reset deep-link flow" on the mobile-number or maintenance screen. Otherwise clear the app's data: `adb shell pm clear com.spacewire.notes`.
+That is by design once the link has been opened, in every build: no screen offers a way back. Clear the app's data (or `./tool/deeplink.sh --reset`): `adb shell pm clear com.spacewire.notes`.
 
 ### Google asks for a lock screen during sign-in
 

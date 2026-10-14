@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Evos mark for the adaptive icon (Android 8+): an "E" and a spark, on
+     the 108dp grid, inside the 66dp safe zone. The same shapes are in
+     tool/app_icon/*.svg, from which the PNG icons are made; change both. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M40,38h0a4,4 0,0 1,4 4v26a4,4 0,0 1,-4 4h0a4,4 0,0 1,-4 -4v-26a4,4 0,0 1,4 -4z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M40,38h20a4,4 0,0 1,4 4v0a4,4 0,0 1,-4 4h-20a4,4 0,0 1,-4 -4v0a4,4 0,0 1,4 -4z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M40,51h14a4,4 0,0 1,4 4v0a4,4 0,0 1,-4 4h-14a4,4 0,0 1,-4 -4v0a4,4 0,0 1,4 -4z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M40,64h20a4,4 0,0 1,4 4v0a4,4 0,0 1,-4 4h-20a4,4 0,0 1,-4 -4v0a4,4 0,0 1,4 -4z" />
+    <path
+        android:fillColor="#FBBF24"
+        android:pathData="M71,33m-3.5,0a3.5,3.5 0,1 1,7 0a3.5,3.5 0,1 1,-7 0" />
+</vector>

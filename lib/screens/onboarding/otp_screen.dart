@@ -87,9 +87,11 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
     final ThemeData theme = Theme.of(context);
     final PhoneAuthState auth = ref.watch(phoneAuthControllerProvider);
     final String phone = auth.phone ?? '';
-    final String shown = phone.length == 10
-        ? '+91 ${phone.substring(0, 5)} ${phone.substring(5)}'
-        : '+91 $phone';
+    final String dial = '+${auth.country.dialCode}';
+    // Indian numbers in the way they are usually written, 98765 43210.
+    final String shown = auth.country.isIndia && phone.length == 10
+        ? '$dial ${phone.substring(0, 5)} ${phone.substring(5)}'
+        : '$dial $phone';
     final bool testMode =
         kDebugMode && ref.watch(evosBackendProvider) is UnconfiguredEvosBackend;
 

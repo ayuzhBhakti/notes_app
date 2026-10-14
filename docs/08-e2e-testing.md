@@ -2,13 +2,14 @@
 
 [Maestro](https://github.com/mobile-dev-inc/Maestro) drives the real app on a device or emulator through YAML flows. It covers what the unit tests cannot: sign-in, Firestore writes, navigation and snackbars.
 
-**Status (2026-10-13), on a Samsung SM-M127G, Android 13:**
+**Status (2026-10-13; notes rows 2026-10-14), on a Samsung SM-M127G, Android 13:**
 
 | Flow | Result |
 |------|--------|
 | `deeplink_local` | Passes |
 | `onboarding_deeplink` | Passes on a test-mode build (`--dart-define=SUPABASE_URL=`). On a normal build it stops, by design, before "Send code" |
-| `create_note`, `edit_note`, `delete_and_undo`, `empty_note_is_discarded`, `profile_logout` | Blocked at Google sign-in. Launch and the tap on "Continue with Google" work; the phone's only Google account is a managed one that demands a lock screen. Nothing after sign-in has run. |
+| `create_note`, `edit_note`, `delete_and_undo`, `empty_note_is_discarded` | Pass (2026-10-14), signed in with the phone's managed account `bablu@bhaktilok.app` |
+| `profile_logout` | Not run. It signs the phone out |
 
 Expect to adjust selectors in the five notes flows the first time they get past sign-in.
 
@@ -96,7 +97,7 @@ Screenshots and logs from failed runs are written to `~/.maestro/tests/`.
 ## How the flows are written
 
 - **Every notes flow starts with `ensure_signed_in`.** Each flow can then run alone and in any state.
-- **A `ListTile` is one accessibility node.** Its text is the title, a newline, then the subtitle, so match `"Email\nmaestro@example.com"`, not the subtitle alone.
+- **A tappable card or `ListTile` is one accessibility node.** Its texts are joined with newlines, so a flow cannot match one of them alone. The note card wraps its title and preview in `Semantics(container: true)` to keep them separate; on 2026-10-14 that is what made `create_note` find its title. Do the same for any new text a flow selects on.
 - **Every flow cleans up.** Notes get a unique title from `Date.now()` and are deleted at the end, so runs do not interfere and the test account stays empty.
 - **Text is the default selector.** Maestro matches visible text as a whole-string regular expression, so `"Log out"` does not match the dialog title `"Log out?"`.
 - **Controls without visible text use a semantics identifier.** Flutter's `Semantics(identifier: ...)` becomes the Android resource ID and the iOS accessibility identifier, selected in a flow with `id:`.
@@ -108,9 +109,9 @@ Screenshots and logs from failed runs are written to `~/.maestro/tests/`.
 | `note_body_field` | Body field | [note_editor_screen.dart](../lib/screens/note_editor_screen.dart) |
 | `note_save_button` | Save icon | [note_editor_screen.dart](../lib/screens/note_editor_screen.dart) |
 | `note_delete_button` | Delete icon | [note_editor_screen.dart](../lib/screens/note_editor_screen.dart) |
-| `phone_field`, `send_code_button` | Mobile-number screen | [phone_screen.dart](../lib/screens/onboarding/phone_screen.dart) |
+| `phone_field`, `send_code_button`, `country_picker`, `login_carousel` | Mobile-number screen (`login_carousel` only when the backend sends slides) | [phone_screen.dart](../lib/screens/onboarding/phone_screen.dart) |
 | `otp_field`, `otp_verify_button`, `otp_resend_button` | Code screen. `otp_field` is the one invisible field under the six boxes | [otp_screen.dart](../lib/screens/onboarding/otp_screen.dart) |
-| `paywall_upi_selector`, `paywall_try_now_button`, `paywall_logout_button` | Paywall bottom bar and top bar | [paywall_screen.dart](../lib/screens/onboarding/paywall_screen.dart) |
+| `paywall_upi_selector`, `paywall_try_now_button` | Paywall bottom bar | [paywall_screen.dart](../lib/screens/onboarding/paywall_screen.dart) |
 | `upi_app_<package>` | A row in the UPI app sheet | [paywall_screen.dart](../lib/screens/onboarding/paywall_screen.dart) |
 | `maintenance_check_again_button`, `maintenance_logout_button` | Maintenance screen | [maintenance_screen.dart](../lib/screens/onboarding/maintenance_screen.dart) |
 
@@ -130,6 +131,7 @@ Renaming user-visible text or an identifier breaks any flow that selects on it. 
 
 ## Known limits
 
+- **`delete_and_undo` flicks rather than drags.** Maestro's swipe from an element stops at the element's edge, which fell short of `Dismissible`'s 40% threshold. `duration: 100` makes it a fling, which dismisses regardless of distance. A real finger swipe was checked with `adb shell input swipe` and works.
 - **Google sign-in is system UI.** The account sheet differs between Android versions and between one and several accounts. [sign_in.yaml](../.maestro/subflows/sign_in.yaml) treats its steps as optional and may need adjusting per device.
 - **`sign_in` picks the first account by default.** Pass `-e GOOGLE_ACCOUNT_EMAIL=...` when the device has more than one, or the wrong one.
 - **Maestro's `autoVerify` did not open the unverified link in the app** on the test phone. The device command in "Before running" is what made it work.

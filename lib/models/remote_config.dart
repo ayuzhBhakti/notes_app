@@ -1,6 +1,16 @@
 import 'dart:convert';
 import 'dart:ui' show Color;
 
+/// One page of the carousel on the mobile-number screen.
+class LoginSlide {
+  const LoginSlide({required this.imageUrl, this.title = ''});
+
+  final String imageUrl;
+
+  /// Shown above the images while this slide is showing. May be blank.
+  final String title;
+}
+
 /// What the backend decides about the deep-link interface: its name, logo and
 /// colour, the paywall's words and prices, and the maintenance message.
 ///
@@ -18,12 +28,14 @@ class RemoteConfig {
     this.ratingValue = '',
     this.ratingCaption = '',
     this.previewImageUrl,
+    this.previewVideoUrl,
     this.features = const <String>[
       'Full access',
       'Cancel anytime',
       'Secure UPI AutoPay',
     ],
     this.socialProofs = const <String>[],
+    this.loginSlides = const <LoginSlide>[],
     this.maintenanceTitle = "We're under maintenance",
     this.maintenanceMessage =
         "Your subscription is active. We'll be back soon, and there is "
@@ -55,11 +67,19 @@ class RemoteConfig {
 
   final String? previewImageUrl;
 
+  /// Plays, looping, in the preview card, as on the CashAlert paywall. Wins
+  /// over [previewImageUrl], which is shown instead if the video cannot play.
+  final String? previewVideoUrl;
+
   /// At most four are shown.
   final List<String> features;
 
   /// Lines rotated under the price. Empty hides the strip.
   final List<String> socialProofs;
+
+  /// The carousel above the mobile-number form, as on the CashAlert login
+  /// screen. Empty hides it.
+  final List<LoginSlide> loginSlides;
 
   final String maintenanceTitle;
   final String maintenanceMessage;
@@ -100,6 +120,11 @@ class RemoteConfig {
     String optional(String key, String fallback) =>
         rows.containsKey(key) ? rows[key]!.trim() : fallback;
 
+    bool isHttps(String text) {
+      final Uri? uri = Uri.tryParse(text);
+      return uri != null && uri.isScheme('https') && uri.host.isNotEmpty;
+    }
+
     String? url(String key) {
       final Uri? uri = Uri.tryParse(rows[key]?.trim() ?? '');
       // https only: Android blocks cleartext, and the image is the brand.
@@ -121,6 +146,22 @@ class RemoteConfig {
       return value != null && value > 0 && value.isFinite ? value : fallback;
     }
 
+    // Images and titles are two lists paired by position, so a bad image is
+    // dropped only after pairing: dropping it first would hand every later
+    // image the wrong title.
+    List<LoginSlide> slides() {
+      final List<String> images = (rows['login_slide_images'] ?? '').split('|');
+      final List<String> titles = (rows['login_slide_titles'] ?? '').split('|');
+      return <LoginSlide>[
+        for (int i = 0; i < images.length; i++)
+          if (isHttps(images[i].trim()))
+            LoginSlide(
+              imageUrl: images[i].trim(),
+              title: i < titles.length ? titles[i].trim() : '',
+            ),
+      ];
+    }
+
     final String appName = text('app_name', d.appName);
     return RemoteConfig(
       appName: appName,
@@ -132,8 +173,10 @@ class RemoteConfig {
       ratingValue: optional('paywall_rating_value', d.ratingValue),
       ratingCaption: optional('paywall_rating_caption', d.ratingCaption),
       previewImageUrl: url('paywall_preview_image_url'),
+      previewVideoUrl: url('paywall_video_url'),
       features: list('paywall_features', d.features).take(4).toList(),
       socialProofs: list('paywall_social_proofs', d.socialProofs),
+      loginSlides: slides(),
       maintenanceTitle: text('maintenance_title', d.maintenanceTitle),
       maintenanceMessage: text('maintenance_message', d.maintenanceMessage),
       planId: optional('cashfree_plan_id', d.planId),

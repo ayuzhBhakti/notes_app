@@ -25,14 +25,6 @@ class OnboardingStore {
   Future<void> save(OnboardingState state) =>
       _prefs.setString(_key, state.encode());
 
-  /// The stage and the sign-in go together: a device back in the normal app
-  /// must not keep a phone session nobody can reach. The fetched settings
-  /// stay, they are not personal.
-  Future<void> clear() async {
-    await _prefs.remove(_key);
-    await _prefs.remove(_sessionKey);
-  }
-
   static const String _sessionKey = 'evos_session_v1';
 
   /// The phone sign-in, as the JSON the Supabase client hands out. Lives here
@@ -54,8 +46,8 @@ class OnboardingStore {
   static const String _referrerCheckedKey = 'install_referrer_checked';
 
   /// The install referrer never changes after install, so it is read once.
-  /// Kept apart from [clear] on purpose: after a debug reset, re-reading the
-  /// same referrer would put the device straight back into onboarding.
+  /// The only way back to the notes app is clearing the app's data, which
+  /// clears this too, so the referrer is read again on the next launch.
   bool get installReferrerChecked =>
       _prefs.getBool(_referrerCheckedKey) ?? false;
 

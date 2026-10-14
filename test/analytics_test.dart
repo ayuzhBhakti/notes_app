@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:notes/models/install_source.dart';
-import 'package:notes/services/analytics.dart';
-import 'package:notes/services/evos_backend.dart';
-import 'package:notes/services/payment_gateway.dart';
+import 'package:Evos/models/install_source.dart';
+import 'package:Evos/services/analytics.dart';
+import 'package:Evos/services/evos_backend.dart';
+import 'package:Evos/services/payment_gateway.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/harness.dart';
@@ -183,6 +183,7 @@ void main() {
       });
       expect(h.recorder.properties('OTP Requested'), <String, Object?>{
         'resend': false,
+        'country': 'IN',
       });
       expect(h.recorder.properties('Checkout Started'), <String, Object?>{
         'plan_id': 'monthly',
@@ -288,6 +289,7 @@ void main() {
       expect(h.recorder.events.last, 'OTP Requested');
       expect(h.recorder.calls.last.$2['properties'], <String, Object?>{
         'resend': true,
+        'country': 'IN',
       });
     });
 
@@ -360,6 +362,7 @@ void main() {
         (tester) async {
       final Harness h = await launch(tester, coldStartLink: onboardingLink);
       await signIn(tester);
+      await tapTryNow(tester);
       await tester.tap(find.text('Log out'));
       await tester.pumpAndSettle();
 

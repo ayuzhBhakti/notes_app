@@ -12,6 +12,7 @@ import 'services/auth_service.dart';
 import 'services/deep_link_service.dart';
 import 'services/install_referrer_service.dart';
 import 'services/onboarding_store.dart';
+import 'theme.dart';
 import 'utils/errors.dart';
 
 Future<void> main() async {
@@ -71,17 +72,10 @@ class NotesApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Notes',
+      title: 'Evos',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
-      ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.indigo,
-          brightness: Brightness.dark,
-        ),
-      ),
+      theme: buildNotesTheme(Brightness.light),
+      darkTheme: buildNotesTheme(Brightness.dark),
       // No `home`: a cold-start deep link reaches Flutter as the platform's
       // initial route name, which takes precedence over `initialRoute`. With
       // `home`, the Navigator would try to push that URL as a named route and
@@ -118,7 +112,7 @@ class _BootstrapErrorApp extends StatelessWidget {
               const Icon(Icons.error_outline, size: 48),
               const SizedBox(height: 16),
               const Text(
-                "Notes couldn't start",
+                "Evos couldn't start",
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
               ),

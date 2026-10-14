@@ -1,4 +1,4 @@
-name: notes
+name: Evos
 description: "A new Flutter project."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
@@ -58,6 +58,9 @@ dependencies:
   # live on the device because that flow runs before any account exists.
   shared_preferences: ^2.5.5
   supabase: ^2.16.2
+  # The paywall's preview video (ExoPlayer on Android). The URL comes from the
+  # backend's app_config row paywall_video_url.
+  video_player: ^2.11.1
 
 dev_dependencies:
   flutter_test:
@@ -80,6 +83,20 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # Poppins, the website's font, for the notes interface (lib/theme.dart).
+  # Bundled rather than fetched at runtime so it works offline. Licence:
+  # assets/fonts/OFL.txt.
+  fonts:
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins-Regular.ttf
+        - asset: assets/fonts/Poppins-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Poppins-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Poppins-Bold.ttf
+          weight: 700
 
   # To add assets to your application, add an assets section, like this:
   # assets:

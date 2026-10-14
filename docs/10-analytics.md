@@ -110,7 +110,7 @@ None of these carry the mobile number or the sign-in code.
 | Event | When it fires | Properties |
 |-------|---------------|------------|
 | `Phone Entry Viewed` | The mobile-number screen opens, including on return from the code screen and after log out | none |
-| `OTP Requested` | "Send code" or "Resend code" is tapped | `resend`: `true` from the code screen |
+| `OTP Requested` | "Send code" or "Resend code" is tapped | `resend`: `true` from the code screen. `country`: ISO code of the number's country, such as `IN` |
 | `OTP Request Failed` | The code could not be sent | `reason` |
 | `OTP Verified` | The server accepted the code. The person is identified just before | `new_user`: `true` when this number had no account |
 | `OTP Verify Failed` | The code was refused, or the check could not be made | `reason` |
@@ -129,7 +129,7 @@ None of these carry the mobile number or the sign-in code.
 
 ### `reason` values
 
-A `reason` is a short code, never the error's message, which is free text and can contain an email address. It comes from `errorCode` in [errors.dart](../lib/utils/errors.dart): the Firebase error code (`permission-denied`, `network-request-failed`), the Google sign-in code (`interrupted`, `clientConfigurationError`), the backend error kind (`network`, `wrongCode`, `tooManyRequests`, `signedOut`, `server`, `notConfigured`), the payment error kind (`declined`, `pending`, `upiAppUnavailable`, `unsupported`) or, for a decline, Cashfree's own code, or otherwise the name of the error's class (`StateError`).
+A `reason` is a short code, never the error's message, which is free text and can contain an email address. It comes from `errorCode` in [errors.dart](../lib/utils/errors.dart): the Firebase error code (`permission-denied`, `network-request-failed`), the Google sign-in code (`interrupted`, `clientConfigurationError`), the backend's own failure code when it sends one (`cashfree_auth_failed`, `email_domain_missing` and the others listed in [09-deep-link-onboarding.md](09-deep-link-onboarding.md#payment)), otherwise the backend error kind (`network`, `wrongCode`, `tooManyRequests`, `countryNotSupported`, `signedOut`, `server`, `notConfigured`), the payment error kind (`declined`, `pending`, `upiAppUnavailable`, `unsupported`) or, for a decline, Cashfree's own code, or otherwise the name of the error's class (`StateError`).
 
 ## Profile properties
 

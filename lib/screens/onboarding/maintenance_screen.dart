@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -130,15 +129,6 @@ class _MaintenanceScreenState extends ConsumerState<MaintenanceScreen> {
                     child: const Text('Log out'),
                   ),
                 ),
-                // A released build has no way out of this interface.
-                // Developers need one, or the only route back to the notes
-                // app is clearing the app's data.
-                if (kDebugMode)
-                  TextButton(
-                    onPressed: () =>
-                        ref.read(onboardingControllerProvider.notifier).reset(),
-                    child: const Text('Reset deep-link flow (debug only)'),
-                  ),
               ],
             ),
           ),

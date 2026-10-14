@@ -37,16 +37,17 @@ Open decisions and unfinished parts of [09-deep-link-onboarding.md](09-deep-link
 | Item | Detail |
 |------|--------|
 | Payment is not set up | Sign-in works against project `sqvlgiqypqvjykczuhgz`. Still empty: `cashfree_app_id`, `cashfree_secret_key`, `customer_email_domain`; and the Cashfree dashboard has no webhook for this project. Until then "Try Now" fails on a normal build. |
+| UPI app detection never seen working | On the test phone the paywall found no UPI app: its only one, Paytm, has never been opened and Android resolves nothing for `upi://pay`. Whether PhonePe or Google Pay are found on a phone that has them set up is unchecked. |
+| Codes reach Indian numbers only | The country selector offers every country, but Fast2SMS's DLT route is India-only, so `sms-hook` refuses the rest. And UPI AutoPay, the only payment, is India-only too. |
 | Sign-in SMS says CashAlert | The Fast2SMS template is CashAlert's. Evos needs its own DLT template. |
 | Sharing CashAlert's Cashfree account | Cashfree sends every app's subscription events to every webhook URL on the account. This backend ignores mandates whose id does not start with `ev_`; CashAlert's webhook is expected to ignore Evos mandates as "user not found", which has not been checked. |
 | Nothing real has run | No SMS has been sent, no code verified by Supabase, no settings fetched, and the Cashfree sheet has never been opened from this app. The list is in [09-deep-link-onboarding.md](09-deep-link-onboarding.md#what-is-not-verified). |
 | What is behind the paywall is not built | A subscriber sees the maintenance screen. |
 | A second tap on "Try Now" while a payment is pending opens a second mandate | The server refuses a new subscription only once the first is confirmed. Inherited from CashAlert. |
-| No preview video on the paywall | CashAlert plays one; this paywall shows a picture from the backend. |
 | The SMS code is not read automatically | The field only carries the one-time-code autofill hint. CashAlert uses the SMS User Consent API. |
 | SMS sender and template | Fast2SMS needs a DLT-registered sender id and template for Evos. CashAlert's template names CashAlert. |
 | `customer_email_domain` is unset | Cashfree needs an email per customer; the server makes one on a domain the business owns, and refuses to create a subscription until the row is filled. |
-| Launcher name and icon are fixed | The backend changes the name and logo inside the interface only. On the home screen the app is "notes". |
+| Launcher name and icon are fixed | The backend changes the name and logo inside the onboarding interface only. The home-screen name ("Evos") and icon (the Evos mark) are set at build time. |
 | Left out of the CashAlert backend | Push notifications, server-side Mixpanel events, the failed-debit retry job and the daily report. A failed renewal ends access silently. |
 | Play Store referrer never tested end to end | It needs a build on a Play testing track. Only the channel itself is confirmed on a device. The marker `flow=onboarding` is unconfirmed with whoever writes the links. |
 | Existing installs cannot enter by Play link | The referrer belongs to the install. A user who already has the app and taps the Play link just opens the normal app. |
@@ -63,10 +64,19 @@ Unfinished parts of [10-analytics.md](10-analytics.md); its "Known gaps" section
 | Item | Detail |
 |------|--------|
 | No keys | The Mixpanel token and the Facebook app ID and client token are placeholders, so nothing is sent. No event has been seen in Mixpanel or in Facebook Events Manager. |
-| Sign-in and notes events never run | The six sign-in events, the eight notes events, `identify` and the reset on log out have a call site each but have never executed: sign-in is blocked on the test phone and those screens have no widget tests. |
+| Sign-in and notes events never run | The six sign-in events, the eight notes events, `identify` and the reset on log out have a call site each. Sign-in and the notes screens ran on the test phone on 2026-10-14, but nobody read the log for these events, and those screens have no widget tests. |
 | iOS sends nothing | The SDKs are wired on Android only. |
 | No consent screen | The Facebook SDK collects the advertising ID once configured. Play's advertising-ID declaration must now say yes. |
 | Debug and release share a project | Test runs will be mixed in with real users once keys are added. |
+
+## Website
+
+| Item | Detail |
+|------|--------|
+| Placeholder email | Every page uses `support@evos.example`. Replace it in all pages at once with `grep -rl 'support@evos.example' website \| xargs sed -i '' 's/support@evos.example/<real address>/g'`. |
+| No domain, not uploaded | No canonical URLs, Open Graph image or sitemap, because the domain is unknown. Add them once it is chosen. `.htaccess` assumes an Apache host such as Hostinger and has not been tried on one. |
+| Legal text not reviewed | The privacy policy, terms and deletion page were written from the code on 2026-10-14. The 30-day deletion promise, the "laws of India" clause and the operator name `Spacewire` need the owner's review. |
+| Play button | Points at `com.spacewire.notes` with `referrer=utm_source=website&utm_medium=button`, which opens the notes app (no `flow` key). The listing may not be live yet. |
 
 ## Gaps
 
@@ -76,11 +86,11 @@ Unfinished parts of [10-analytics.md](10-analytics.md); its "Known gaps" section
 | No pagination | `watchNotes` loads every note. Fine for personal use, slow for thousands of notes. |
 | Shared action state | `NoteActions` has one `AsyncValue` for all saves and deletes. Two writes in flight overwrite each other's status, and an error stays in state until the next action. |
 | Undo re-stamps `createdAt` | Accepted on purpose; nothing displays `createdAt`. It matters if a "created" date is ever shown. |
-| No account deletion or data export | Only log out exists. App stores require account deletion for apps with sign-in. |
+| No account deletion or data export in the app | Only log out exists. The website's `delete-user-data.html` takes deletion requests by email, which satisfies Play's web-link requirement, but someone has to act on them by hand in Firebase and Supabase. |
 | Release signing | Release builds use the debug key. A real keystore and its SHA-1 in Firebase are needed before publishing. |
 | Rules are published by hand | The repository file can drift from the live rules. No emulator tests cover the rules. |
 | Test coverage | The signed-in notes screens (list, editor, profile) have no widget or provider tests. Onboarding is covered. |
-| Notes Maestro flows never run past sign-in | The five notes flows launch the app and tap through to Google's account sheet, then stop: the test phone's only Google account is a managed one that demands a lock screen. Everything after sign-in, including their semantics identifiers, is unconfirmed on a device. |
+| `profile_logout` never run | The other four notes flows pass (2026-10-14). This one signs the phone out, so it is run only when asked. See [08-e2e-testing.md](08-e2e-testing.md). |
 | No CI | Nothing runs `flutter analyze`, `flutter test` or the Maestro flows automatically. |
 | Unconfigured platforms | Web, macOS, Windows and Linux folders exist but the app cannot start on them. |
 | iOS build unverified | Never built on this machine. |
@@ -88,7 +98,6 @@ Unfinished parts of [10-analytics.md](10-analytics.md); its "Known gaps" section
 ## Documentation and naming mismatches
 
 - [auth_service.dart](../lib/services/auth_service.dart) and [notes_repository.dart](../lib/services/notes_repository.dart) each claim to be "the only file" importing their Firebase package. Other files import them too; see [02-architecture.md](02-architecture.md#import-rules).
-- The Android app label is `notes` (lower case) in [AndroidManifest.xml](../android/app/src/main/AndroidManifest.xml); the iOS display name is `Notes`.
 - `pubspec.yaml` still has the template description "A new Flutter project."
 - [android/app/build.gradle.kts](../android/app/build.gradle.kts) still has the template `TODO` comments for the application ID and signing.
 

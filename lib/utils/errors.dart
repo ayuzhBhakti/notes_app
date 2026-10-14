@@ -20,7 +20,7 @@ class AppFailure {
 String errorCode(Object error) {
   if (error is ProviderException) return errorCode(error.exception);
   if (error is GoogleSignInException) return error.code.name;
-  if (error is BackendFailure) return error.kind.name;
+  if (error is BackendFailure) return error.code ?? error.kind.name;
   if (error is PaymentFailure) return error.code ?? error.kind.name;
   // Covers FirebaseAuthException, which extends it.
   if (error is FirebaseException) return error.code;
@@ -57,11 +57,19 @@ AppFailure describeError(Object error) {
         ),
       BackendError.signedOut =>
         const AppFailure('You have been signed out. Sign in again.'),
+      BackendError.countryNotSupported => const AppFailure(
+          "We can't send codes to this country yet.",
+          hint: 'Use an Indian mobile number.',
+        ),
       BackendError.alreadySubscribed =>
         const AppFailure('Your subscription is already active.'),
       BackendError.notConfigured ||
       BackendError.server =>
-        const AppFailure('Something went wrong on our side. Try again.'),
+        AppFailure(
+          'Something went wrong on our side. Try again.',
+          // Lets a tester or a support request say exactly what failed.
+          hint: error.code == null ? null : 'Error code: ${error.code}',
+        ),
     };
   }
 

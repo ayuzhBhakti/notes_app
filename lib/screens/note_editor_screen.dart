@@ -123,10 +123,16 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   @override
   Widget build(BuildContext context) {
     final bool isEditing = widget.note != null;
+    final ThemeData theme = Theme.of(context);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(isEditing ? 'Edit note' : 'New note'),
+        title: Text(
+          isEditing ? 'Edit note' : 'New note',
+          style: theme.textTheme.titleMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
         actions: <Widget>[
           // The Semantics identifiers in this screen are what the Maestro flows
           // in .maestro/ select on. A tooltip is not exposed as text on
@@ -143,16 +149,22 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
             ),
           Semantics(
             identifier: 'note_save_button',
-            child: IconButton(
+            child: IconButton.filled(
               tooltip: 'Save',
-              icon: const Icon(Icons.check),
+              icon: const Icon(Icons.check_rounded),
               onPressed: _save,
+              // The app bar's icon colour would otherwise win over the
+              // filled button's and draw a dark tick on the violet.
+              style: IconButton.styleFrom(
+                foregroundColor: theme.colorScheme.onPrimary,
+              ),
             ),
           ),
+          const SizedBox(width: 12),
         ],
       ),
       body: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
@@ -164,15 +176,29 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                 // Matches the 200-byte cap in the security rules.
                 maxLength: 200,
                 textCapitalization: TextCapitalization.sentences,
-                style: Theme.of(context).textTheme.titleLarge,
-                decoration: const InputDecoration(
+                style: theme.textTheme.headlineSmall,
+                decoration: InputDecoration(
                   hintText: 'Title',
+                  hintStyle: theme.textTheme.headlineSmall?.copyWith(
+                    color: theme.colorScheme.outline,
+                  ),
                   border: InputBorder.none,
                   counterText: '',
+                  isDense: true,
                 ),
               ),
             ),
-            const Divider(),
+            const SizedBox(height: 4),
+            // A short violet rule under the title, after the icon's style.
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 12),
             Expanded(
               child: Semantics(
                 identifier: 'note_body_field',
@@ -183,8 +209,12 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                   textAlignVertical: TextAlignVertical.top,
                   textCapitalization: TextCapitalization.sentences,
                   keyboardType: TextInputType.multiline,
-                  decoration: const InputDecoration(
+                  style: theme.textTheme.bodyLarge,
+                  decoration: InputDecoration(
                     hintText: 'Write something…',
+                    hintStyle: theme.textTheme.bodyLarge?.copyWith(
+                      color: theme.colorScheme.outline,
+                    ),
                     border: InputBorder.none,
                   ),
                 ),

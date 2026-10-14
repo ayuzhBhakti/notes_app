@@ -4,8 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers.dart';
 import '../services/analytics.dart';
+import '../theme.dart';
 import '../utils/errors.dart';
 import '../widgets/track_view.dart';
+import '../widgets/user_avatar.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -24,7 +26,6 @@ class ProfileScreen extends ConsumerWidget {
       );
     }
 
-    final String? photoUrl = user.photoURL;
     final String name = user.displayName?.trim().isNotEmpty ?? false
         ? user.displayName!.trim()
         : 'Signed in';
@@ -34,56 +35,69 @@ class ProfileScreen extends ConsumerWidget {
       child: Scaffold(
         appBar: AppBar(title: const Text('Profile')),
         body: ListView(
-          padding: const EdgeInsets.symmetric(vertical: 24),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
           children: <Widget>[
-            Center(
-              child: CircleAvatar(
-                radius: 44,
-                backgroundColor: theme.colorScheme.primaryContainer,
-                foregroundImage:
-                    photoUrl == null ? null : NetworkImage(photoUrl),
-                child: Text(
-                  _initials(name),
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    color: theme.colorScheme.onPrimaryContainer,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Center(
-              child: Text(name, style: theme.textTheme.titleLarge),
-            ),
-            if (user.email != null) ...<Widget>[
-              const SizedBox(height: 4),
-              Center(
-                child: Text(
-                  user.email!,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            ],
-            const SizedBox(height: 32),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.fingerprint),
-              title: const Text('User ID'),
-              subtitle: Text(user.uid),
-            ),
-            const Divider(),
-            const SizedBox(height: 16),
+            _Header(user: user, name: name),
+            const SizedBox(height: 28),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: OutlinedButton.icon(
-                onPressed: busy ? null : () => _confirmSignOut(context, ref),
-                icon: const Icon(Icons.logout),
-                label: const Text('Log out'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: theme.colorScheme.error,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+              padding: const EdgeInsets.only(left: 4, bottom: 10),
+              child: Text(
+                'Account',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
+              ),
+            ),
+            // A row of plain texts rather than a ListTile, which would merge
+            // them into one node; the Maestro flow looks for "User ID" alone.
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: <Widget>[
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Icon(
+                        Icons.fingerprint,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text('User ID', style: theme.textTheme.titleSmall),
+                          const SizedBox(height: 2),
+                          Text(
+                            user.uid,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 32),
+            OutlinedButton.icon(
+              onPressed: busy ? null : () => _confirmSignOut(context, ref),
+              icon: const Icon(Icons.logout),
+              label: const Text('Log out'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: theme.colorScheme.error,
+                side: BorderSide(
+                  color: theme.colorScheme.error.withValues(alpha: 0.4),
+                ),
+                minimumSize: const Size.fromHeight(56),
               ),
             ),
           ],
@@ -129,13 +143,66 @@ class ProfileScreen extends ConsumerWidget {
     }
     // On success the auth gate swaps in the sign-in screen; no pop needed here.
   }
+}
 
-  String _initials(String name) {
-    final List<String> parts =
-        name.trim().split(RegExp(r'\s+')).where((String p) => p.isNotEmpty).toList();
-    if (parts.isEmpty) return '?';
-    if (parts.length == 1) return parts.first.characters.first.toUpperCase();
-    return (parts.first.characters.first + parts.last.characters.first)
-        .toUpperCase();
+/// The violet card at the top, in the launcher icon's colours.
+class _Header extends StatelessWidget {
+  const _Header({required this.user, required this.name});
+
+  final User user;
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
+      decoration: BoxDecoration(
+        gradient: kBrandGradient,
+        borderRadius: BorderRadius.circular(28),
+      ),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: <Widget>[
+          const Positioned(
+            top: -8,
+            right: -4,
+            child: CircleAvatar(radius: 6, backgroundColor: kBrandAmber),
+          ),
+          Column(
+            children: <Widget>[
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withValues(alpha: 0.9),
+                  ),
+                  child: UserAvatar(user: user, radius: 42),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                name,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  color: Colors.white,
+                ),
+              ),
+              if (user.email != null) ...<Widget>[
+                const SizedBox(height: 2),
+                Text(
+                  user.email!,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: Colors.white.withValues(alpha: 0.8),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }

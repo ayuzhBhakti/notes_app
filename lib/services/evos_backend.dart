@@ -21,6 +21,9 @@ enum BackendError {
   /// The code is wrong or has expired. The server does not say which.
   wrongCode,
 
+  /// Codes cannot be delivered to the number's country.
+  countryNotSupported,
+
   /// Asked to start a subscription for someone who already has access.
   alreadySubscribed,
   server,
@@ -29,12 +32,18 @@ enum BackendError {
 /// Carries no message from the server: those are written for developers and
 /// can contain a phone number.
 class BackendFailure implements Exception {
-  const BackendFailure(this.kind);
+  const BackendFailure(this.kind, {this.code});
 
   final BackendError kind;
 
+  /// The server's own short name for the failure, such as
+  /// `cashfree_auth_failed`, when it sent one. Shown to the user under the
+  /// message and sent to analytics, so a failure can be identified without
+  /// the server's logs. Never a message, which could hold personal data.
+  final String? code;
+
   @override
-  String toString() => 'BackendFailure(${kind.name})';
+  String toString() => 'BackendFailure(${code ?? kind.name})';
 }
 
 class SignInResult {
@@ -259,14 +268,29 @@ class SupabaseEvosBackend implements EvosBackend {
       rethrow;
     } catch (error) {
       if (kDebugMode) debugPrint('[evos] Backend call failed: $error');
-      throw BackendFailure(_classify(error, onRefused));
+      throw BackendFailure(_classify(error, onRefused), code: _serverCode(error));
     }
+  }
+
+  /// The `code` an edge function put in its error body, if it is a plain
+  /// short name.
+  static String? _serverCode(Object error) {
+    if (error is! FunctionException) return null;
+    final Object? details = error.details;
+    final Object? code = details is Map ? details['code'] : null;
+    return code is String && RegExp(r'^[a-z0-9_]{1,40}$').hasMatch(code)
+        ? code
+        : null;
   }
 
   static BackendError _classify(Object error, BackendError onRefused) {
     if (error is AuthRetryableFetchException) return BackendError.network;
     if (error is AuthException) {
       final String code = error.code ?? '';
+      // Said by sms-hook, which passes it through Supabase Auth as its message.
+      if (error.message.contains('sms_country_not_supported')) {
+        return BackendError.countryNotSupported;
+      }
       if (error.statusCode == '429' || code.contains('rate_limit')) {
         return BackendError.tooManyRequests;
       }

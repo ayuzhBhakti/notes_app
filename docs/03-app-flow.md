@@ -18,7 +18,7 @@ flowchart TD
     SignIn -- Google sign-in succeeds --> Gate
     List -- tap New note --> EditorNew[NoteEditorScreen, new]
     List -- tap a row --> EditorEdit[NoteEditorScreen, edit]
-    List -- profile icon --> Profile[ProfileScreen]
+    List -- avatar --> Profile[ProfileScreen]
     EditorNew -- save or back --> List
     EditorEdit -- save, delete or back --> List
     Profile -- Log out --> Gate
@@ -41,7 +41,7 @@ In [main.dart](../lib/main.dart):
 7. On the first launch only, `InstallReferrerService.fetch()` reads the Play Store install referrer, waiting at most 3 seconds. When it answers, the `Install Attributed` event is sent.
 8. `runApp`, with the link service, the store and the referrer passed in as provider overrides.
 
-If step 4, 5 or 6 throws, the app runs `_BootstrapErrorApp` and shows "Notes couldn't start" with the reason. This is what happens on web and desktop, which have no Firebase options.
+If step 4, 5 or 6 throws, the app runs `_BootstrapErrorApp` and shows "Evos couldn't start" with the reason. This is what happens on web and desktop, which have no Firebase options.
 
 Every screen and action after this reports an analytics event. They are listed in [10-analytics.md](10-analytics.md).
 
@@ -75,28 +75,28 @@ Outcomes other than success:
 | Sign-in is "cancelled" repeatedly | A hint banner that the signing certificate is probably not registered in Firebase. It appears after 1 cancel in debug builds and 2 in release. An unregistered SHA-1 is reported by Android as a cancellation, so this is the only signal. |
 | Any other failure | An error banner with the message and hint from `describeError`. |
 
-The button is disabled and shows "Signing in…" while the request runs.
+The screen shows the Evos mark (the launcher icon, drawn), the tagline, three lines on what the app does, and the button at the bottom. The button is disabled and shows "Signing in…" while the request runs.
 
 ## Notes list
 
-[notes_list_screen.dart](../lib/screens/notes_list_screen.dart) watches `notesStreamProvider`.
+[notes_list_screen.dart](../lib/screens/notes_list_screen.dart) watches `notesStreamProvider`. A pinned bar holds the large "Notes" title and, on the same row, the user's avatar, which opens Profile; "New note" is a floating button.
 
 - **Loading:** a spinner, on first load only.
-- **Empty:** "No notes yet".
+- **Empty:** "No notes yet" and "Tap New note to write your first one."
 - **Error:** the message, a hint, and a "Try again" button that invalidates the provider.
-- **Data:** rows sorted newest edit first.
+- **Data:** the note count, then one card per note, newest edit first.
 
-Each row ([note_tile.dart](../lib/widgets/note_tile.dart)) shows:
+Each card ([note_tile.dart](../lib/widgets/note_tile.dart)) shows:
 
 - **Title:** the note's title, or the first line of the body, or "Untitled note".
-- **Preview:** up to two lines of the body.
+- **Preview:** up to three lines of the body.
 - **Time:** "Just now", "5m ago", "3h ago", "2d ago", then a date such as "4 Mar". It reads "Saving…" while the server timestamp is unresolved.
 
 ## Saving a note
 
 [note_editor_screen.dart](../lib/screens/note_editor_screen.dart) handles create (`note == null`) and edit. The note is passed in from the list, not re-fetched.
 
-1. The user taps the check icon.
+1. The user taps the round violet check button (tooltip "Save").
 2. Title and body are trimmed. If both are empty the screen pops and nothing is written.
 3. `NoteActions.save` is called and **not awaited**; the screen pops at once.
 4. Firestore writes to its local cache, so the note appears in the list immediately, marked "Saving…" until the server confirms.
@@ -108,7 +108,7 @@ Leaving with the back button discards the edits without asking.
 
 There are two entry points with the same result:
 
-- **Swipe a row left** in the list.
+- **Swipe a card left** in the list.
 - **Tap the delete icon** in the editor, which also pops the editor.
 
 Then:
@@ -121,7 +121,7 @@ The swipe never removes the row itself: `confirmDismiss` always returns false an
 
 ## Profile and sign out
 
-[profile_screen.dart](../lib/screens/profile_screen.dart) shows the user's photo or initials, name, email and user ID.
+[profile_screen.dart](../lib/screens/profile_screen.dart) shows the user's photo or initials, name and email on a violet card, then the user ID, then a full-width **Log out** button.
 
 1. The user taps **Log out** and confirms in a dialog.
 2. `SignInController.signOut` signs out of Google (best effort) and then Firebase.

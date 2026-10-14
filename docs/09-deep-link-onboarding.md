@@ -78,7 +78,6 @@ flowchart TD
     Otp -- "verified, already subscribed" --> Maint[MaintenanceScreen]
     Paywall -- mandate confirmed --> Maint
     Paywall -- cancelled or failed --> Paywall
-    Paywall -- log out --> Phone
     Maint -- log out --> Phone
     Maint -- subscription ended --> Paywall
 ```
@@ -86,7 +85,7 @@ flowchart TD
 - **The switch is remembered.** Once the link has been opened, the device stays in this interface across restarts.
 - **The server decides who has paid.** The stage saved on the device is only what to show first. At every start, whenever the paywall comes back to the front, and on "Check again", the app asks the server and moves between paywall and maintenance to match. A subscriber on a new phone goes from the code screen straight to maintenance.
 - **Offline, nothing moves.** If the server cannot be reached the device stays where it last knew it was, so a subscriber is not sent back to the paywall for having no signal.
-- **There is no way out, by decision.** Log out returns to the mobile-number screen, not to the notes app. A debug build shows a "Reset deep-link flow" button on the mobile-number and maintenance screens for developers; a release build has nothing.
+- **There is no way out, by decision.** Log out, on the maintenance screen only (the paywall has none, by decision of 2026-10-14), returns to the mobile-number screen, not to the notes app. No build, debug included, has a button back to the notes app (removed 2026-10-14); clearing the app's data, or `./tool/deeplink.sh --reset`, is the only way.
 - **The install referrer is read once,** on the first launch.
 - **Opening the direct link again does nothing** once the flow has started, so progress is never lost.
 - **A link that arrives while the notes app is open** closes any open editor or profile screen and shows the sign-in. A signed-in Google session is left intact but is not reachable until a reset. The two sign-ins are separate: Google on Firebase for notes, phone on Supabase here.
@@ -97,14 +96,14 @@ Designs: <https://claude.ai/artifact/R8sDE5Buj8BJo7E14StMTW> (the paywall there 
 
 | Screen | File | Behaviour |
 |--------|------|-----------|
-| Mobile number | [phone_screen.dart](../lib/screens/onboarding/phone_screen.dart) | Logo, "Welcome to <name>", one field with a fixed `+91`. "Send code" is off until the number is a valid Indian mobile (ten digits, first digit 6 to 9). A pasted `+91 98765 43210` or `098765…` is reduced to its ten digits. Pre-filled when coming back from the code screen. |
+| Mobile number | [phone_screen.dart](../lib/screens/onboarding/phone_screen.dart) | With slides from the backend: a small logo-and-name header; a carousel card that takes all spare height (the slide's title, the app screenshot shown whole with rounded corners and a shadow on a light tint of the brand colour, and dots; moves on every 2 seconds and can be swiped); then "Welcome to <name>", the number field and "Send code" right under it. The carousel hides while the keyboard is open and the field keeps its focus; the field does not autofocus, so the carousel shows first. Without slides: logo, heading and form, top-aligned, field autofocused. The field starts with a country selector (flag and calling code, India by default); tapping it opens a searchable sheet of about 190 countries, by name, code or ISO code ([country.dart](../lib/models/country.dart)). For India, "Send code" is off until the number is a valid Indian mobile (ten digits, first digit 6 to 9), and a pasted `+91 98765 43210` or `098765…` is reduced to its ten digits. For other countries the only rule is the international one, 6 digits up to 15 in all, with a leading 0 and a pasted country code removed. **Only Indian numbers can receive a code today**: `sms-hook` refuses any other with `sms_country_not_supported`, which the app shows as "We can't send codes to this country yet." Delivering elsewhere needs a second SMS provider in `sms-hook`; paying needs more than UPI AutoPay, which is India-only. Pre-filled when coming back from the code screen. |
 | Code | [otp_screen.dart](../lib/screens/onboarding/otp_screen.dart) | Six boxes over one hidden field, so paste and the keyboard's SMS suggestion work. The sixth digit verifies by itself; "Verify" is there too. A wrong code empties the boxes. "Resend code" appears after 30 seconds. Back, in the app bar or the system's, returns to the number. |
-| Paywall | [paywall_screen.dart](../lib/screens/onboarding/paywall_screen.dart) | CashAlert's layout: logo and "Log out" on top; heading with a pill; rating; preview picture; up to four feature badges; the monthly price struck through beside the trial price; a rotating line of social proof; a bottom bar with the UPI app on the left and "Try Now" on the right. Each part with nothing to show is left out. |
+| Paywall | [paywall_screen.dart](../lib/screens/onboarding/paywall_screen.dart) | CashAlert's layout without its "Log out": logo and name on top; heading with a pill; rating; preview video (or picture); up to four feature badges; the monthly price struck through beside the trial price; a rotating line of social proof; a bottom bar with the UPI app on the left and "Try Now" on the right. Each part with nothing to show is left out. |
 | Maintenance | [maintenance_screen.dart](../lib/screens/onboarding/maintenance_screen.dart) | Heading and message from the backend, "Check again", "Log out". |
 
 One sentence on the paywall never comes from the backend and is always shown: "₹3 today for the first 24 hours, then ₹299 every month by UPI AutoPay. Cancel any time in your UPI app.", with the two amounts filled in. It is the statement that money will be taken every month.
 
-The paywall has no preview **video**, which CashAlert's has. It shows a picture from `paywall_preview_image_url`.
+**The preview video** comes from `paywall_video_url`, and plays as on CashAlert: it starts by itself with sound, loops, and a tap pauses or plays it. Unlike CashAlert's it is never cropped: the card takes the video's own shape at full width, and a video too tall for 45% of the screen height is shown narrower, centred. A 16:9 card holds the place until the video reports its shape. It pauses while a payment runs and while the app is in the background. A spinner shows while it loads. If it cannot play, `paywall_preview_image_url` is shown instead, or no card. CashAlert picks a video per app language from a `subscription_videos` table; Evos has one language and one URL.
 
 ## Backend
 
@@ -112,6 +111,8 @@ Everything is in [supabase/](../supabase/), adapted from CashAlert's. It is depl
 
 | Part | File | Role |
 |------|------|------|
+| Carousel rows | [migrations/20261014130000_login_slides.sql](../supabase/migrations/20261014130000_login_slides.sql) | Adds `login_slide_images` and `login_slide_titles` |
+| Video row | [migrations/20261014120000_paywall_video.sql](../supabase/migrations/20261014120000_paywall_video.sql) | Adds `paywall_video_url` |
 | SMS settings rows | [migrations/20261013130000_sms_config_rows.sql](../supabase/migrations/20261013130000_sms_config_rows.sql) | Adds the four SMS rows where the first migration ran before it had them |
 | Tables and policies | [migrations/20261013120000_evos_init.sql](../supabase/migrations/20261013120000_evos_init.sql) | `app_config`, `profiles`, `subscription_payments`, the `has_active_subscription()` function, and a trigger that makes a profile for each new sign-in |
 | `sms-hook` | [functions/sms-hook/](../supabase/functions/sms-hook/index.ts) | Supabase Auth makes and checks the code; this delivers it through Fast2SMS |
@@ -132,7 +133,10 @@ Key and value rows, edited in the Supabase Table Editor. A third column, `is_pub
 | `theme_color` | yes | `#RRGGBB`. The whole colour scheme is generated from it | `#6D28D9` |
 | `paywall_title_prefix`, `paywall_title_badge`, `paywall_title_suffix` | yes | The three parts of the heading. A blank badge shows the trial price | `1-Day`, blank, `Trial` |
 | `paywall_rating_value`, `paywall_rating_caption` | yes | Stars and the text beside them. Blank hides the row | blank |
-| `paywall_preview_image_url` | yes | HTTPS image. Blank hides the card | blank |
+| `login_slide_images` | yes | App screenshots for the carousel on the mobile-number screen, https links separated by `\|`. Shown whole, never cropped, so any portrait screenshot fits. Keep each file small: around 720 px wide, JPG or WebP, under about 300 KB. The app decodes them at the size drawn, but still downloads the whole file. Blank hides the carousel. Added by migration `20261014130000` | blank |
+| `login_slide_titles` | yes | One title per image, separated by `\|`, paired by position. A missing title is blank | blank |
+| `paywall_video_url` | yes | HTTPS link to an MP4 (H.264) video for the preview card. Added by migration `20261014120000` | blank |
+| `paywall_preview_image_url` | yes | HTTPS image, shown when there is no video or it cannot play. Both blank hides the card | blank |
 | `paywall_features` | yes | Up to four badges, separated by `\|` | `Full access\|Cancel anytime\|Secure UPI AutoPay` |
 | `paywall_social_proofs` | yes | Rotating lines, separated by `\|`. Blank hides the strip | blank |
 | `maintenance_title`, `maintenance_message` | yes | The maintenance screen | see the migration |
@@ -148,7 +152,7 @@ Key and value rows, edited in the Supabase Table Editor. A third column, `is_pub
 
 - **The Cashfree id and secret never reach the app.** They are private rows, read only by edge functions with the service role. The app receives a single-use session id. Never mark either row public.
 - The app keeps the last settings it fetched on the device, so the next start is already branded before the network answers, and still is with no network. A missing row, a blank value or a bad one (a colour that is not `#RRGGBB`, a negative price, an `http:` image) falls back to the default rather than breaking a screen. Parsing is in [remote_config.dart](../lib/models/remote_config.dart).
-- **The launcher icon and the name under it do not change.** Android fixes them when the app is built. On the home screen the app is still "notes".
+- **The launcher icon and the name under it do not change with the backend.** Android fixes them when the app is built. The home-screen name is "Evos" and the icon is the Evos mark (both since 2026-10-14). The icon is made from [tool/app_icon/](../tool/app_icon/): see 01-overview.
 - The two amounts are read twice: by the app to show them, and by the server to charge them. Both read the same rows.
 
 ### Sign-in
@@ -185,6 +189,7 @@ sequenceDiagram
 - The Cashfree SDK (2.4.0, the version CashAlert uses) is called from Kotlin in [PaymentsChannel.kt](../android/app/src/main/kotlin/com/spacewire/notes/payments/PaymentsChannel.kt) over the channel `com.spacewire.notes/payments`. It offers PhonePe, Google Pay, Paytm and BHIM, whichever are installed, and preselects the first.
 - `subscribe` completes on success, throws `PaymentCanceled` when the user backs out of the UPI app, and throws `PaymentFailure` or `BackendFailure` otherwise.
 - **A payment still being confirmed is not called a failure.** If Cashfree has not confirmed within about 24 seconds the paywall says so and asks the user to reopen the app. When the paywall next comes to the front, or the app next starts, the server is asked again and a completed payment lets the user in.
+- **A failure says why.** `create-cashfree-subscription` returns a `code` with every failure: `cashfree_keys_missing`, `email_domain_missing`, `phone_not_indian`, `cashfree_auth_failed` (Cashfree answered 401 or 403: wrong id or secret, or keys from the other environment), `cashfree_rejected_<status>`, `cashfree_error_<status>`, `config_unreadable`, `server_error`. The app shows it as "Error code: …" under "Something went wrong on our side", and sends it as the `reason` of `Checkout Failed`. The full message is in the function's log, and in a debug build's log as `[evos] Backend call failed`.
 - **Asking to pay when already subscribed** gets a 409 from the server, and the app simply lets the user in.
 - **Tapping "Try Now" again after a pending payment creates a second mandate.** The server only refuses once the first one is confirmed. This is inherited from CashAlert.
 - Whether the subscription is active is the SQL function `has_active_subscription()`: trial or active and not past its end date, or cancelled but still inside the period already paid for.
@@ -260,7 +265,7 @@ Three keys in `shared_preferences`:
 - A missing, corrupt or unrecognised stage decodes to "inactive", so bad data can never lock a user out of the notes app.
 - A stage saved by the earlier build (`details`, `member`) decodes to `signIn`: that device is still in the flow but has no account.
 - A stage past sign-in with no session on the device is shown as sign-in.
-- The mobile number and the code are never stored. The debug reset clears the stage and the session, and keeps the settings.
+- The mobile number and the code are never stored. Clearing the app's data removes all three keys, and `install_referrer_checked`.
 - Each step is reported to analytics, without the number or the code. The events are in [10-analytics.md](10-analytics.md#onboarding).
 
 ## Setting up the backend
@@ -293,9 +298,21 @@ The project is `sqvlgiqypqvjykczuhgz` (`https://sqvlgiqypqvjykczuhgz.supabase.co
 
 **UPI apps.** [AndroidManifest.xml](../android/app/src/main/AndroidManifest.xml) lists the four UPI packages under `<queries>`. Android 11 and later hides any app not listed there, so the list must match `UPI_APPS` in `PaymentsChannel.kt`.
 
-**Direct link.** The manifest declares an `autoVerify` intent filter for `https://notes-f36b3.web.app/onboarding`. The host there must equal `kDeepLinkHost` in [deep_link_service.dart](../lib/services/deep_link_service.dart). This link is a development aid; the domain was the implementer's default and hosts nothing.
+**Direct link: the one to share with the team** while the app is not on Play: `https://notes-f36b3.web.app/onboarding`. The manifest declares an `autoVerify` intent filter for it; the host must equal `kDeepLinkHost` in [deep_link_service.dart](../lib/services/deep_link_service.dart).
 
-Android would open the direct link in the app without asking only if the domain served this file at `https://notes-f36b3.web.app/.well-known/assetlinks.json`:
+The domain is Firebase Hosting of the `notes-f36b3` project. The site to deploy there is in the repository, **not yet deployed** (as of 2026-10-14 the domain answers "Site Not Found"):
+
+| File | Purpose |
+|------|---------|
+| [firebase.json](../firebase.json), [.firebaserc](../.firebaserc) | Hosting config. `appAssociation` is `NONE` so Hosting serves our own `assetlinks.json` instead of generating one |
+| [web_links/.well-known/assetlinks.json](../web_links/.well-known/assetlinks.json) | Tells Android the link belongs to `com.spacewire.notes` signed with this machine's debug key (which also signs the release APK). With it, the link opens the app with no question asked |
+| [web_links/onboarding/index.html](../web_links/onboarding/index.html) | What a browser shows if the link did not open the app: an "Open in the app" button using an `intent://` URL that names the package, which Chrome opens even where the domain is not verified |
+
+Deploy, once, from the repository root: `brew install firebase-cli`, `firebase login`, `firebase deploy --only hosting`. Android verifies the domain when the app is installed, so a phone that installed the APK before the deploy needs to reinstall it (or `adb shell pm verify-app-links --re-verify com.spacewire.notes`).
+
+Until then, a tester on Android 12 or later can approve the domain by hand, once: Settings → Apps → Evos → Set as default (Open by default) → Add link → tick `notes-f36b3.web.app`.
+
+The file it serves, at `https://notes-f36b3.web.app/.well-known/assetlinks.json`:
 
 ```json
 [{
@@ -312,7 +329,7 @@ Android would open the direct link in the app without asking only if the domain 
 
 That fingerprint is this machine's **debug** key. Add the release key's SHA-256 before publishing, and each developer's debug key if they need verified links.
 
-It is not hosted and does not need to be for the Play Store route. For development, approve the domain on the device, once:
+It is not needed for the Play Store route. With adb, the domain can also be approved on a device directly:
 
 ```sh
 adb shell pm set-app-links-user-selection --user cur --package com.spacewire.notes true notes-f36b3.web.app
@@ -341,7 +358,7 @@ Not configured. The Play Store route does not exist there, an iOS link would nee
 - **Parts of sign-in.** Working on the test phone against the live project (2026-10-13): the settings fetch, a code sent and verified for a new number, the session saved, the paywall reached. Not seen: a returning number, a wrong or expired code from the real server, resend, a session restored after a restart or refreshed after it expires, log out, and the status check answering "subscribed".
 - **The three Cashfree functions.** Deployed, which means they bundled, but none has handled a real request. `sms-hook` has.
 - **A real payment.** `CashfreePaymentGateway` and `PaymentsChannel.kt` compile and the app builds with the SDK, but the Cashfree sheet has never been opened from this app, in sandbox or production. That `action_cancelled` is the SDK's code for a user cancel was read from the SDK's classes, not observed.
-- **A backend-supplied logo or preview picture.** Only the letter tile has been seen on a device.
+- **A backend-supplied logo, preview picture, preview video or carousel image.** Only the letter tile has been seen on a device. The carousel is covered by widget tests (slides, auto-advance, swipe, keyboard). The video's failure path is covered by a widget test; playback is not.
 - **A real install through a Play Store referrer link.**
 
 ## Open items

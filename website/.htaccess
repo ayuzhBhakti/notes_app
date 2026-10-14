@@ -1,0 +1,10 @@
+# Evos website settings for an Apache host such as Hostinger.
+# If the host already has a .htaccess file, add these lines to it instead of replacing it.
+
+# Our own "page not found" page instead of the host's.
+ErrorDocument 404 /404.html
+
+# Send text files compressed.
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/css text/plain image/svg+xml
+</IfModule>

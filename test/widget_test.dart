@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:notes/models/note.dart';
-import 'package:notes/utils/format.dart';
+import 'package:Evos/models/note.dart';
+import 'package:Evos/utils/format.dart';
 
 // A widget test that pumps the real app is deliberately not written here: the
 // root widget requires Firebase.initializeApp, which fails under flutter_test

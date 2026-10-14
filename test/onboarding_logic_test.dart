@@ -1,11 +1,12 @@
 import 'dart:ui' show Color;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:notes/models/onboarding.dart';
-import 'package:notes/models/remote_config.dart';
-import 'package:notes/services/deep_link_service.dart';
-import 'package:notes/services/install_referrer_service.dart';
-import 'package:notes/utils/validators.dart';
+import 'package:Evos/models/country.dart';
+import 'package:Evos/models/onboarding.dart';
+import 'package:Evos/models/remote_config.dart';
+import 'package:Evos/services/deep_link_service.dart';
+import 'package:Evos/services/install_referrer_service.dart';
+import 'package:Evos/utils/validators.dart';
 
 void main() {
   group('isOnboardingLink', () {
@@ -139,11 +140,41 @@ void main() {
     });
   });
 
+  group('other countries', () {
+    const Country uk = Country('United Kingdom', 'GB', '44');
+
+    test('a trunk 0 and a pasted country code are removed', () {
+      expect(normalizeNationalNumber(uk, '07911 123456'), '7911123456');
+      expect(normalizeNationalNumber(uk, '+44 7911 123456'), '7911123456');
+    });
+
+    test('too short or too long for any number is refused', () {
+      expect(normalizeNationalNumber(uk, '12345'), isNull);
+      // 13 national digits plus the 2 of +44 is 15, the limit.
+      expect(normalizeNationalNumber(uk, '1234567890123'), isNotNull);
+      expect(normalizeNationalNumber(uk, '12345678901234'), isNull);
+      expect(validateNationalNumber(uk, ''), 'Enter your mobile number.');
+    });
+
+    test('India keeps its own strict rule', () {
+      expect(normalizeNationalNumber(kIndia, '1234567890'), isNull);
+      expect(normalizeNationalNumber(kIndia, '+91 98765 43210'), '9876543210');
+    });
+
+    test('flags come from the ISO code, and every code is unique', () {
+      expect(kIndia.flag, '🇮🇳');
+      final Set<String> codes = kCountries.map((Country c) => c.isoCode).toSet();
+      expect(codes, hasLength(kCountries.length));
+      expect(countryByIso('GB')?.dialCode, '44');
+    });
+  });
+
   group('RemoteConfig', () {
     test('no rows gives a complete default', () {
       final RemoteConfig config = RemoteConfig.fromRows(<String, String>{});
       expect(config.appName, 'Evos');
       expect(config.logoUrl, isNull);
+      expect(config.previewVideoUrl, isNull);
       expect(config.trialPriceLabel, '₹3');
       expect(config.recurringPriceLabel, '₹299');
       expect(config.features, isNotEmpty);
@@ -156,6 +187,7 @@ void main() {
       final RemoteConfig config = RemoteConfig.fromRows(<String, String>{
         'app_name': 'Zed',
         'app_logo_url': 'https://cdn.example.com/logo.png',
+        'paywall_video_url': 'https://cdn.example.com/preview.mp4',
         'theme_color': '#0B7A5C',
         'paywall_features': 'One | Two|| Three ',
         'paywall_social_proofs': 'A|B',
@@ -167,6 +199,7 @@ void main() {
       });
       expect(config.appName, 'Zed');
       expect(config.logoUrl, 'https://cdn.example.com/logo.png');
+      expect(config.previewVideoUrl, 'https://cdn.example.com/preview.mp4');
       expect(config.seedColor, const Color(0xFF0B7A5C));
       expect(config.features, <String>['One', 'Two', 'Three']);
       expect(config.socialProofs, <String>['A', 'B']);
@@ -204,6 +237,21 @@ void main() {
         RemoteConfig.fromRows(<String, String>{}).features,
         const RemoteConfig().features,
       );
+    });
+
+    test('login slides pair images and titles by position', () {
+      final List<LoginSlide> slides = RemoteConfig.fromRows(<String, String>{
+        'login_slide_images': 'https://a.example/1.png|http://bad.example/2.png'
+            '| https://a.example/3.png ',
+        'login_slide_titles': 'One|Two',
+      }).loginSlides;
+      // The insecure image is dropped without moving "Two" onto the third.
+      expect(slides.map((LoginSlide s) => s.imageUrl), <String>[
+        'https://a.example/1.png',
+        'https://a.example/3.png',
+      ]);
+      expect(slides.map((LoginSlide s) => s.title), <String>['One', '']);
+      expect(RemoteConfig.fromRows(<String, String>{}).loginSlides, isEmpty);
     });
 
     test('at most four features are shown', () {

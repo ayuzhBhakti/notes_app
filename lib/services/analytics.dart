@@ -148,8 +148,13 @@ class Analytics {
   void phoneEntryViewed() => _track('Phone Entry Viewed');
 
   /// A sign-in code was asked for. [resend]: from the code screen.
-  void otpRequested({required bool resend}) =>
-      _track('OTP Requested', <String, Object>{'resend': resend});
+  /// [country]: ISO code of the number's country, such as `IN`; never the
+  /// number itself.
+  void otpRequested({required bool resend, required String country}) =>
+      _track('OTP Requested', <String, Object>{
+        'resend': resend,
+        'country': country,
+      });
 
   void otpRequestFailed(String reason) =>
       _track('OTP Request Failed', <String, Object>{'reason': reason});

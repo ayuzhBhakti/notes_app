@@ -71,7 +71,16 @@ Deno.serve(async (req) => {
     const wh = new Webhook(hookSecret);
     const { user, sms } = wh.verify(payload, headers) as SmsHookPayload;
 
-    const number = user.phone.replace(/^\+?91/, "").replace(/\D/g, "");
+    // Fast2SMS's DLT route reaches Indian numbers only. Anything else is
+    // refused in words the app recognises, rather than sent and lost.
+    const digits = user.phone.replace(/\D/g, "");
+    if (!digits.startsWith("91") || digits.length !== 12) {
+      return jsonResponse(
+        { error: { http_code: 422, message: "sms_country_not_supported" } },
+        422,
+      );
+    }
+    const number = digits.slice(2);
     const smsSecrets = readSmsSecrets(config);
 
     const params = new URLSearchParams({

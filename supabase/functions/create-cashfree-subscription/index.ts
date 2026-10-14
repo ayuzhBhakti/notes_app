@@ -171,6 +171,25 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     logPaymentError(FN, "failed", error);
-    return jsonResponse({ error: (error as Error).message }, 500);
+    const message = (error as Error).message ?? "";
+    return jsonResponse({ error: message, code: failureCode(message) }, 500);
   }
 });
+
+/**
+ * A short, stable name for why the subscription could not be created. The app shows it under
+ * its error message and sends it to analytics, so a failure can be told apart without the logs.
+ * Never contains the phone number or a key.
+ */
+function failureCode(message: string): string {
+  if (message.includes("Cashfree credentials missing")) return "cashfree_keys_missing";
+  if (message.includes("customer_email_domain")) return "email_domain_missing";
+  if (message.includes("valid Indian phone")) return "phone_not_indian";
+  const status = /failed \((\d{3})\)/.exec(message)?.[1];
+  // 401 and 403 from Cashfree: wrong id or secret, or keys from the other environment.
+  if (status === "401" || status === "403") return "cashfree_auth_failed";
+  if (status?.startsWith("4")) return `cashfree_rejected_${status}`;
+  if (status) return `cashfree_error_${status}`;
+  if (message.includes("app_config")) return "config_unreadable";
+  return "server_error";
+}

@@ -50,6 +50,7 @@ Analytics sits beside this: controllers and screens call `Analytics`, which send
 | [lib/services/auth_service.dart](../lib/services/auth_service.dart) | Google sign-in and sign-out |
 | [lib/services/notes_repository.dart](../lib/services/notes_repository.dart) | Firestore reads and writes for notes |
 | [lib/models/onboarding.dart](../lib/models/onboarding.dart) | `OnboardingState`, `OnboardingStage` |
+| [lib/models/country.dart](../lib/models/country.dart) | `Country` and the list for the sign-in country selector |
 | [lib/models/remote_config.dart](../lib/models/remote_config.dart) | `RemoteConfig`: the backend's name, logo, colour, paywall text, prices and maintenance message, with defaults and parsing |
 | [lib/models/install_source.dart](../lib/models/install_source.dart) | `InstallSource`: the campaign fields of the Play install referrer, for analytics |
 | [lib/services/analytics.dart](../lib/services/analytics.dart) | `Analytics`, one method per event, and the method-channel client behind it |
@@ -62,7 +63,10 @@ Analytics sits beside this: controllers and screens call `Analytics`, which send
 | [lib/screens/](../lib/screens/) | `AppGate`, `AuthGate`, sign-in, notes list, editor, profile |
 | [lib/screens/onboarding/](../lib/screens/onboarding/) | Mobile number, code, paywall, maintenance |
 | [lib/widgets/brand.dart](../lib/widgets/brand.dart) | `BrandShell`, `BrandLogo`, `BrandHeader`: the backend's name, colour and logo, applied to the onboarding interface only |
-| [lib/widgets/note_tile.dart](../lib/widgets/note_tile.dart) | One row of the notes list |
+| [lib/theme.dart](../lib/theme.dart) | `buildNotesTheme` and the brand colours and gradient, for the notes interface only |
+| [lib/widgets/evos_mark.dart](../lib/widgets/evos_mark.dart) | `EvosMark`: the launcher icon drawn in code, for the sign-in screen |
+| [lib/widgets/user_avatar.dart](../lib/widgets/user_avatar.dart) | `UserAvatar`: the Google photo or initials, on the notes list and the profile |
+| [lib/widgets/note_tile.dart](../lib/widgets/note_tile.dart) | One card of the notes list |
 | [lib/widgets/track_view.dart](../lib/widgets/track_view.dart) | `TrackView`: reports a screen view once, for screens that are stateless |
 | [lib/utils/errors.dart](../lib/utils/errors.dart) | `describeError`: maps any thrown object to a user-facing `AppFailure`. `errorCode`: a short name for the same error, for analytics |
 | [android/.../notes/analytics/](../android/app/src/main/kotlin/com/spacewire/notes/analytics/) | Kotlin: `AnalyticsChannel`, `MixpanelSdk`, `MetaSdk` |
@@ -152,8 +156,8 @@ A failure during startup is shown by `_BootstrapErrorApp` in [main.dart](../lib/
 
 There are two kinds of test.
 
-- **Unit tests.** [widget_test.dart](../test/widget_test.dart) has 8 tests on `Note.displayTitle`, `Note.sortKey` and `formatNoteTime`. [onboarding_logic_test.dart](../test/onboarding_logic_test.dart) has 22 on link and referrer matching, stage encoding, the mobile-number rule and `RemoteConfig` parsing. [analytics_test.dart](../test/analytics_test.dart) has 13 on `InstallSource.parse` and on which calls `Analytics` makes.
-- **Widget tests.** [onboarding_flow_test.dart](../test/onboarding_flow_test.dart) has 42 tests that pump the real `NotesApp`. Firebase is never initialised: `authStateProvider` is overridden with a signed-out stream, which is the only Firebase-backed provider the signed-out path reads. Supabase and Cashfree are replaced by the fakes in [support/harness.dart](../test/support/harness.dart). [analytics_test.dart](../test/analytics_test.dart) has 12 more that pump it with a recording `AnalyticsClient` and check the events sent. The signed-in notes screens have no widget tests.
+- **Unit tests.** [widget_test.dart](../test/widget_test.dart) has 8 tests on `Note.displayTitle`, `Note.sortKey` and `formatNoteTime`. [onboarding_logic_test.dart](../test/onboarding_logic_test.dart) has 27 on link and referrer matching, stage encoding, the mobile-number rule and `RemoteConfig` parsing. [analytics_test.dart](../test/analytics_test.dart) has 13 on `InstallSource.parse` and on which calls `Analytics` makes.
+- **Widget tests.** [onboarding_flow_test.dart](../test/onboarding_flow_test.dart) has 51 tests that pump the real `NotesApp`. Firebase is never initialised: `authStateProvider` is overridden with a signed-out stream, which is the only Firebase-backed provider the signed-out path reads. Supabase and Cashfree are replaced by the fakes in [support/harness.dart](../test/support/harness.dart). [analytics_test.dart](../test/analytics_test.dart) has 12 more that pump it with a recording `AnalyticsClient` and check the events sent. The signed-in notes screens have no widget tests.
 - **End-to-end flows.** Seven Maestro flows in `.maestro/` drive the installed app. See [08-e2e-testing.md](08-e2e-testing.md).
 
 Controls with no visible text carry a `Semantics(identifier: ...)` so the flows can select them. The identifiers are listed in [08-e2e-testing.md](08-e2e-testing.md#how-the-flows-are-written).

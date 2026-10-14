@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:notes/models/onboarding.dart';
-import 'package:notes/services/deep_link_service.dart';
-import 'package:notes/services/evos_backend.dart';
-import 'package:notes/services/payment_gateway.dart';
+import 'package:Evos/models/onboarding.dart';
+import 'package:Evos/services/deep_link_service.dart';
+import 'package:Evos/services/evos_backend.dart';
+import 'package:Evos/services/payment_gateway.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/harness.dart';
@@ -171,6 +171,54 @@ void main() {
       expect(find.text(_codeScreen), findsOneWidget);
     });
 
+    testWidgets('another country can be chosen, and its code is used',
+        (tester) async {
+      final Harness h = await launch(tester, coldStartLink: onboardingLink);
+      expect(find.text('+91'), findsOneWidget);
+
+      await tester.tap(find.bySemanticsIdentifier('country_picker'));
+      await tester.pumpAndSettle();
+      expect(find.text('Choose your country'), findsOneWidget);
+      await tester.enterText(find.byType(TextField).last, 'united king');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('United Kingdom'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('+44'), findsOneWidget);
+      await sendCode(tester, '07911 123456');
+
+      // The leading 0 is how the number is dialled inside the country only.
+      expect(h.backend.codesSentTo, <String>['+447911123456']);
+      expect(find.text('Sent by SMS to +44 7911123456'), findsOneWidget);
+    });
+
+    testWidgets('the country search finds a calling code', (tester) async {
+      await launch(tester, coldStartLink: onboardingLink);
+      await tester.tap(find.bySemanticsIdentifier('country_picker'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField).last, '+971');
+      await tester.pumpAndSettle();
+
+      expect(find.text('United Arab Emirates'), findsOneWidget);
+      expect(find.text('India'), findsNothing);
+    });
+
+    testWidgets('a country codes cannot reach is said plainly',
+        (tester) async {
+      await launch(
+        tester,
+        coldStartLink: onboardingLink,
+        setup: (FakeBackend b) =>
+            b.sendError = BackendError.countryNotSupported,
+      );
+
+      await sendCode(tester);
+
+      expect(find.textContaining("We can't send codes to this country yet."),
+          findsOneWidget);
+    });
+
     testWidgets('too many requests is said plainly', (tester) async {
       await launch(
         tester,
@@ -181,6 +229,85 @@ void main() {
       await sendCode(tester);
 
       expect(find.textContaining('Too many attempts.'), findsOneWidget);
+    });
+  });
+
+  group('login carousel', () {
+    const Map<String, String> slides = <String, String>{
+      'login_slide_images': 'https://cdn.example.com/1.png|'
+          'https://cdn.example.com/2.png|https://cdn.example.com/3.png',
+      'login_slide_titles': 'Hear every payment|Your language|Track growth',
+    };
+
+    testWidgets('shows the backend slides and moves on by itself',
+        (tester) async {
+      await launch(
+        tester,
+        coldStartLink: onboardingLink,
+        setup: (FakeBackend b) => b.config = slides,
+      );
+
+      expect(find.bySemanticsIdentifier('login_carousel'), findsOneWidget);
+      expect(find.text('Hear every payment'), findsOneWidget);
+      expect(find.text(_phoneScreen), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+      expect(find.text('Your language'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+      // Round again to the first.
+      expect(find.text('Hear every payment'), findsOneWidget);
+    });
+
+    testWidgets('a swipe moves to the next slide', (tester) async {
+      await launch(
+        tester,
+        coldStartLink: onboardingLink,
+        setup: (FakeBackend b) => b.config = slides,
+      );
+
+      await tester.fling(
+        find.bySemanticsIdentifier('login_carousel'),
+        const Offset(-400, 0),
+        1000,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Your language'), findsOneWidget);
+    });
+
+    testWidgets('steps aside for the keyboard, which stays open',
+        (tester) async {
+      await launch(
+        tester,
+        coldStartLink: onboardingLink,
+        setup: (FakeBackend b) => b.config = slides,
+      );
+      addTearDown(tester.view.resetViewInsets);
+
+      await tester.tap(find.byType(TextField));
+      tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+      await tester.pumpAndSettle();
+
+      expect(find.bySemanticsIdentifier('login_carousel'), findsNothing);
+      expect(tester.testTextInput.isVisible, isTrue);
+      await tester.enterText(find.byType(TextField), phone);
+      await tester.pump();
+      expect(find.text(phone), findsOneWidget);
+
+      tester.view.resetViewInsets();
+      await tester.pumpAndSettle();
+      expect(find.bySemanticsIdentifier('login_carousel'), findsOneWidget);
+    });
+
+    testWidgets('with no slides from the backend there is no carousel',
+        (tester) async {
+      await launch(tester, coldStartLink: onboardingLink);
+      expect(find.bySemanticsIdentifier('login_carousel'), findsNothing);
     });
   });
 
@@ -304,6 +431,25 @@ void main() {
       );
     });
 
+    testWidgets('a video that cannot play leaves a working paywall',
+        (tester) async {
+      // No video plugin answers in a widget test, which is the same to the
+      // paywall as a video that fails to load on a phone.
+      final Harness h = await launch(
+        tester,
+        coldStartLink: onboardingLink,
+        setup: (FakeBackend b) => b.config = <String, String>{
+          'paywall_video_url': 'https://cdn.example.com/preview.mp4',
+        },
+      );
+      await signIn(tester);
+
+      expect(tester.takeException(), isNull);
+      expect(find.bySemanticsIdentifier('paywall_video'), findsNothing);
+      await tapTryNow(tester);
+      expect(h.gateway.paidWith, <String>['PhonePe']);
+    });
+
     testWidgets('takes its colour from the backend', (tester) async {
       await launch(
         tester,
@@ -419,6 +565,31 @@ void main() {
       expect(find.text(_maintenance), findsNothing);
     });
 
+    testWidgets('a server failure shows the code the server gave',
+        (tester) async {
+      final Harness h = await launch(
+        tester,
+        coldStartLink: onboardingLink,
+        gateway: FakeGateway(
+          failure: const BackendFailure(
+            BackendError.server,
+            code: 'cashfree_auth_failed',
+          ),
+        ),
+      );
+      await signIn(tester);
+
+      await tapTryNow(tester);
+
+      expect(
+        find.text('Something went wrong on our side. Try again. '
+            'Error code: cashfree_auth_failed'),
+        findsOneWidget,
+      );
+      expect(h.recorder.properties('Checkout Failed')['reason'],
+          'cashfree_auth_failed');
+    });
+
     testWidgets('a payment still being confirmed is not called a failure',
         (tester) async {
       await launch(
@@ -469,10 +640,19 @@ void main() {
       expect(find.text('Test mode: no payment is taken.'), findsNothing);
     });
 
-    testWidgets('Log out returns to the mobile-number screen, not to notes',
+    testWidgets('has no Log out', (tester) async {
+      await launch(tester, coldStartLink: onboardingLink);
+      await signIn(tester);
+
+      expect(find.text('Try Now'), findsOneWidget);
+      expect(find.text('Log out'), findsNothing);
+    });
+
+    testWidgets('Log out on maintenance returns to the number, not to notes',
         (tester) async {
       final Harness h = await launch(tester, coldStartLink: onboardingLink);
       await signIn(tester);
+      await tapTryNow(tester);
 
       await tester.tap(find.text('Log out'));
       await tester.pumpAndSettle();
@@ -636,19 +816,14 @@ void main() {
       expect(find.text('Try Now'), findsOneWidget);
     });
 
-    testWidgets('the debug reset returns to the normal app, signed out',
+    testWidgets('no screen offers a way back to the notes app',
         (tester) async {
       await launch(tester, coldStartLink: onboardingLink);
+      expect(find.textContaining('Reset'), findsNothing);
       await signIn(tester);
+      expect(find.textContaining('Reset'), findsNothing);
       await tapTryNow(tester);
-
-      await tester.tap(find.text('Reset deep-link flow (debug only)'));
-      await tester.pumpAndSettle();
-
-      expect(find.text(_notesApp), findsOneWidget);
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
-      expect(prefs.getString('onboarding_v1'), isNull);
-      expect(prefs.getString('evos_session_v1'), isNull);
+      expect(find.textContaining('Reset'), findsNothing);
     });
   });
 }

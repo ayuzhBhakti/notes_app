@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'models/country.dart';
 import 'models/note.dart';
 import 'models/onboarding.dart';
 import 'models/remote_config.dart';
@@ -427,15 +428,6 @@ class OnboardingController extends Notifier<OnboardingState> {
     ref.invalidate(phoneAuthControllerProvider);
     _set(OnboardingStage.signIn);
   }
-
-  /// Returns the device to the normal notes app. Only reachable from a
-  /// debug-build button; a real user has no way to leave the flow.
-  void reset() {
-    state = const OnboardingState();
-    ref.invalidate(phoneAuthControllerProvider);
-    // Also clears the saved sign-in.
-    unawaited(ref.read(onboardingStoreProvider).clear());
-  }
 }
 
 final NotifierProvider<OnboardingController, OnboardingState>
@@ -449,17 +441,21 @@ class PhoneAuthState {
   const PhoneAuthState({
     this.phone,
     this.lastPhone,
+    this.country = kIndia,
     this.sends = 0,
     this.busy = false,
     this.error,
   });
 
-  /// The ten digits a code was sent to. Null shows the mobile-number screen;
-  /// anything else shows the code screen.
+  /// The national digits a code was sent to, without the country code. Null
+  /// shows the mobile-number screen; anything else shows the code screen.
   final String? phone;
 
   /// What to put back in the field after "Change number".
   final String? lastPhone;
+
+  /// The country of [phone], or the one last chosen on the number screen.
+  final Country country;
 
   /// Codes sent to [phone] so far. The code screen restarts its resend timer
   /// when this goes up.
@@ -467,43 +463,53 @@ class PhoneAuthState {
 
   final bool busy;
   final Object? error;
+
+  /// [phone] as the server takes it, such as `+919876543210`.
+  String? get phoneE164 => phone == null ? null : '+${country.dialCode}$phone';
 }
 
-/// Sends and checks the sign-in code. India only, so the number is always
-/// ten digits and `+91` is added here.
+/// Sends and checks the sign-in code.
 class PhoneAuthController extends Notifier<PhoneAuthState> {
   @override
   PhoneAuthState build() => const PhoneAuthState();
 
-  static String _e164(String phone) => '+91$phone';
-
-  /// [phone] is ten digits, already validated. Used by the number screen.
-  Future<void> requestCode(String phone) => _send(phone, resend: false);
+  /// [phone] is the national number, already validated for [country]. Used
+  /// by the number screen.
+  Future<void> requestCode(Country country, String phone) =>
+      _send(country, phone, resend: false);
 
   /// Used by the code screen.
   Future<void> resend() async {
     final String? phone = state.phone;
-    if (phone != null) await _send(phone, resend: true);
+    if (phone != null) await _send(state.country, phone, resend: true);
   }
 
-  Future<void> _send(String phone, {required bool resend}) async {
+  Future<void> _send(
+    Country country,
+    String phone, {
+    required bool resend,
+  }) async {
     final PhoneAuthState before = state;
     final Analytics analytics = ref.read(analyticsProvider);
-    analytics.otpRequested(resend: resend);
+    analytics.otpRequested(resend: resend, country: country.isoCode);
     state = PhoneAuthState(
       phone: before.phone,
       lastPhone: phone,
+      country: country,
       sends: before.sends,
       busy: true,
     );
     try {
-      await ref.read(evosBackendProvider).sendOtp(_e164(phone));
+      await ref
+          .read(evosBackendProvider)
+          .sendOtp('+${country.dialCode}$phone');
     } catch (error) {
       analytics.otpRequestFailed(errorCode(error));
       if (!ref.mounted) return;
       state = PhoneAuthState(
         phone: before.phone,
         lastPhone: phone,
+        country: country,
         sends: before.sends,
         error: error,
       );
@@ -513,23 +519,27 @@ class PhoneAuthController extends Notifier<PhoneAuthState> {
     state = PhoneAuthState(
       phone: phone,
       lastPhone: phone,
+      country: country,
       sends: before.sends + 1,
     );
   }
 
   Future<void> verify(String code) async {
     final String? phone = state.phone;
-    if (phone == null || state.busy) return;
+    final String? e164 = state.phoneE164;
+    if (phone == null || e164 == null || state.busy) return;
     final Analytics analytics = ref.read(analyticsProvider);
     final EvosBackend backend = ref.read(evosBackendProvider);
+    final Country country = state.country;
     state = PhoneAuthState(
       phone: phone,
       lastPhone: phone,
+      country: country,
       sends: state.sends,
       busy: true,
     );
     try {
-      final SignInResult result = await backend.verifyOtp(_e164(phone), code);
+      final SignInResult result = await backend.verifyOtp(e164, code);
       analytics.otpVerified(
         userId: result.userId,
         newUser: result.isNewUser,
@@ -554,6 +564,7 @@ class PhoneAuthController extends Notifier<PhoneAuthState> {
       state = PhoneAuthState(
         phone: phone,
         lastPhone: phone,
+        country: country,
         sends: state.sends,
         error: error,
       );
@@ -561,7 +572,10 @@ class PhoneAuthController extends Notifier<PhoneAuthState> {
   }
 
   /// Back from the code screen to the mobile-number screen.
-  void changeNumber() => state = PhoneAuthState(lastPhone: state.lastPhone);
+  void changeNumber() => state = PhoneAuthState(
+        lastPhone: state.lastPhone,
+        country: state.country,
+      );
 }
 
 final NotifierProvider<PhoneAuthController, PhoneAuthState>
