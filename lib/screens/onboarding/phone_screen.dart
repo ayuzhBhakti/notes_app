@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -31,16 +32,88 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
   // Kept after "Change number", like the number itself.
   late Country _country = ref.read(phoneAuthControllerProvider).country;
 
+  /// The longest a fresh install waits for the backend's settings and the
+  /// first slide before showing the form anyway.
+  static const Duration _maxWait = Duration(seconds: 4);
+
+  // False only on a first launch, while the settings have not answered or
+  // the first slide image has not loaded. Drawing the form then would show
+  // it without the carousel, focus the field and open the keyboard, and the
+  // carousel arriving a moment later would rearrange the screen and stay
+  // hidden behind that keyboard. Once true it stays true.
+  bool _ready = false;
+  Timer? _readyTimer;
+  // The first slide already being loaded, so each is started once.
+  String? _warmed;
+
   @override
   void initState() {
     super.initState();
     ref.read(analyticsProvider).phoneEntryViewed();
+    _readyTimer = Timer(_maxWait, _showForm);
   }
 
   @override
   void dispose() {
+    _readyTimer?.cancel();
     _phone.dispose();
     super.dispose();
+  }
+
+  void _showForm() {
+    _readyTimer?.cancel();
+    if (mounted && !_ready) setState(() => _ready = true);
+  }
+
+  /// Loads every slide image into the image cache, at the size the carousel
+  /// draws it, and shows the form once the first one is in. A failed image
+  /// counts as in: the carousel shows its placeholder for it.
+  ///
+  /// True when the first one was already in the cache, as after "Change
+  /// number": the form then shows on this frame, with no flash of spinner.
+  bool _warmSlides(List<LoginSlide> slides) {
+    if (_warmed == slides.first.imageUrl) return false;
+    _warmed = slides.first.imageUrl;
+    for (final LoginSlide slide in slides.skip(1)) {
+      precacheImage(
+        _slideImage(context, slide.imageUrl),
+        context,
+        onError: (Object _, StackTrace? _) {},
+      );
+    }
+
+    // The first by hand rather than through precacheImage, whose future
+    // completes a microtask late even for a cached image.
+    bool inBuild = true;
+    bool loadedNow = false;
+    final ImageStream stream = _slideImage(
+      context,
+      slides.first.imageUrl,
+    ).resolve(createLocalImageConfiguration(context));
+    late final ImageStreamListener listener;
+    void loaded() {
+      // Removed after the frame, as precacheImage does, so the cache has
+      // taken the image before its last listener goes.
+      SchedulerBinding.instance.addPostFrameCallback(
+        (Duration _) => stream.removeListener(listener),
+      );
+      if (inBuild) {
+        loadedNow = true;
+      } else {
+        _showForm();
+      }
+    }
+
+    listener = ImageStreamListener(
+      (ImageInfo image, bool _) {
+        image.dispose();
+        loaded();
+      },
+      onError: (Object _, StackTrace? _) => loaded(),
+    );
+    stream.addListener(listener);
+    inBuild = false;
+    return loadedNow;
   }
 
   void _submit() {
@@ -79,6 +152,17 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
       remoteConfigProvider.select((RemoteConfig c) => c.loginSlides),
     );
     final bool hasSlides = slides.isNotEmpty;
+    if (!_ready && ref.watch(remoteConfigSettledProvider)) {
+      if (!hasSlides || _warmSlides(slides)) {
+        _readyTimer?.cancel();
+        _ready = true;
+      }
+    }
+    if (!_ready) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
     // Read above the Scaffold, which hides the keyboard's height from its body.
     final bool keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     // As on CashAlert, the carousel steps aside while the number is typed.
@@ -571,7 +655,6 @@ class _LoginCarouselState extends State<_LoginCarousel> {
     final ColorScheme colors = theme.colorScheme;
     final String title = widget.slides[_index].title;
     final bool manySlides = widget.slides.length > 1;
-    final double pixelRatio = MediaQuery.devicePixelRatioOf(context);
 
     return Semantics(
       identifier: 'login_carousel',
@@ -639,15 +722,8 @@ class _LoginCarouselState extends State<_LoginCarousel> {
                 },
                 itemBuilder: (BuildContext context, int index) => Padding(
                   padding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
-                  child: LayoutBuilder(
-                    builder: (BuildContext context, BoxConstraints box) =>
-                        _Screenshot(
-                      url: widget.slides[index].imageUrl,
-                      // Decoded at the size it is drawn, not the file's own:
-                      // a full-resolution screenshot would cost tens of
-                      // megabytes of memory for a card this size.
-                      cacheHeight: (box.maxHeight * pixelRatio).round(),
-                    ),
+                  child: _Screenshot(
+                    image: _slideImage(context, widget.slides[index].imageUrl),
                   ),
                 ),
               ),
@@ -683,13 +759,26 @@ class _LoginCarouselState extends State<_LoginCarousel> {
   }
 }
 
+/// A slide image, decoded at a height worked out from the screen rather than
+/// the file: a full-resolution screenshot would cost tens of megabytes of
+/// memory for a card this size. From the screen and not the card, so the copy
+/// [_PhoneScreenState] loads before the carousel shows is the one it draws:
+/// the image cache keys on the decode size.
+ImageProvider _slideImage(BuildContext context, String url) {
+  // The card is never taller than about half the screen.
+  final double height =
+      MediaQuery.sizeOf(context).height *
+      0.6 *
+      MediaQuery.devicePixelRatioOf(context);
+  return ResizeImage.resizeIfNeeded(null, height.round(), NetworkImage(url));
+}
+
 /// One app screenshot, shown whole with a phone screen's rounded corners
 /// and a soft shadow. Never cropped: it is the app being shown.
 class _Screenshot extends StatelessWidget {
-  const _Screenshot({required this.url, required this.cacheHeight});
+  const _Screenshot({required this.image});
 
-  final String url;
-  final int cacheHeight;
+  final ImageProvider image;
 
   @override
   Widget build(BuildContext context) {
@@ -728,10 +817,9 @@ class _Screenshot extends StatelessWidget {
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(18),
-          child: Image.network(
-            url,
+          child: Image(
+            image: image,
             fit: BoxFit.contain,
-            cacheHeight: cacheHeight,
             excludeFromSemantics: true,
             loadingBuilder:
                 (BuildContext _, Widget image, ImageChunkEvent? progress) =>

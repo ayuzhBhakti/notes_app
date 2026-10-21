@@ -17,6 +17,124 @@ One entry per completed task, newest first. Keep entries short: what changed, wh
 
 ---
 
+## 2026-10-21 — Verified the real Mixpanel and Facebook keys
+
+**Request:** the owner put real keys in `analytics_keys.xml`; check that everything works.
+**Changes:** `MetaSdk.kt` turns on the Facebook SDK's request and App Events logging in debug builds (Mixpanel's was already on). Docs updated to say the keys are in.
+**Why:** without that logging there was no way to see from the phone whether Facebook accepted anything.
+**Verified:** Graph API read with the App ID and client token returned the app "evos" (a wrong token is refused). `flutter analyze` clean, 125 tests pass. Test-mode debug build on the test phone, `onboarding_deeplink` up to the maintenance screen: Mixpanel `/track` and `/engage` answered `status: 1` for all 12 events plus the profile, Facebook answered `success: true` for `fb_sdk_initialize`, `MOBILE_APP_INSTALL`, `fb_mobile_activate_app`, `fb_mobile_initiated_checkout`. The "not fully initialized" errors appear only on the first launch after install and are harmless. Not checked inside the dashboards.
+**Docs updated:** `docs/10-analytics.md`, `docs/05-setup-and-build.md`, `docs/07-known-issues.md`, `docs/ai/AGENT_CONTEXT.md`.
+**Follow-ups:** owner to confirm the events in Mixpanel and Events Manager; sign-in/notes events, `metaCompleteRegistration` and a real purchase still never sent; debug and release share the project.
+
+---
+
+## 2026-10-21 — Facebook Android platform details
+
+**Request:** package name, class name and key hash to register the app in Facebook and get the app id and client token.
+**Changes:** none to code. Recorded the values in `docs/10-analytics.md`.
+**Why:** `keytool -printcert -jarfile` cannot read these APKs (v2 signatures only), so the hashes came from `apksigner`; reading the certificate from the APK avoids touching `key.properties` or the keystore.
+**Verified:** release APK signer is `CN=Spacewire` (upload key), debug is `CN=Android Debug`.
+**Docs updated:** `docs/10-analytics.md`.
+**Follow-ups:** add the Play app signing key's hash once the app is on Play; put the app id and client token into `analytics_keys.xml`.
+
+---
+
+## 2026-10-21 — Login carousel shows from the first frame on a fresh install
+
+**Request:** on the deep-link sign-up screen the carousel did not show at first; it appeared after a moment and the screen's items moved.
+**Changes:** `providers.dart`: new `remoteConfigSettledProvider`, true once settings are saved on the device or the fetch has answered or failed; `RemoteConfigController.refresh` settles it. `phone_screen.dart`: on a first launch the screen shows a spinner until settled and the first slide image is loaded (at most 4 s), then the form; all slide images are precached; slide images are decoded at a height from the screen size (not the card) so the precached copy is the one drawn. `test/support/harness.dart`: `FakeBackend.configDelay`, `launch(settle:)`. Two new tests in `onboarding_flow_test.dart`.
+**Why:** a fresh install had no saved settings, so the first frame was the no-slides layout with the field autofocused; the keyboard opened, and when the slides arrived the layout jumped and the carousel stayed hidden behind the keyboard. Images then loaded separately behind a placeholder.
+**Verified:** `flutter analyze` no issues; `flutter test` 125/125. `check-syntax` OK on `onboarding_deeplink` and `deeplink_local` (flows not run). Normal debug build on the test phone, `./tool/deeplink.sh --fresh`: spinner, then the carousel with the keyboard closed. Phone reset with `--reset` afterwards.
+**Docs updated:** 09-deep-link-onboarding, ai/AGENT_CONTEXT.
+**Follow-ups:** images still download on every launch (Flutter keeps no disk cache); a disk cache would need a package such as `cached_network_image`.
+
+---
+
+## 2026-10-21 — Upload key regenerated with the owner's alias and password
+
+**Request:** regenerate the keystore with alias `admin` and the owner's password.
+**Changes:** `android/app/upload-keystore.jks` and `android/key.properties` replaced (same settings otherwise). The earlier key, never uploaded anywhere, was moved out of the repo to the session scratchpad. No Gradle change.
+**Verified:** `flutter build apk` succeeded and `apksigner` shows SHA-1 `42:4C:...:D7:60`; `flutter build appbundle` wrote an `.aab` signed by the same key and still exits with the cmdline-tools error.
+**Docs updated:** 05-setup-and-build (alias, fingerprints).
+**Follow-ups:** the earlier entry's SHA-1 (`0B:74:...`) is obsolete; register `42:4C:...` in Firebase instead. Back up both files.
+
+---
+
+## 2026-10-21 — Release signing with an upload key
+
+**Request:** generate the release keystore and set up Gradle.
+**Changes:** new `android/app/upload-keystore.jks` (PKCS12, RSA 4096, alias `upload`, 10,000 days, `CN=Spacewire, O=Spacewire, L=India, C=IN`) and `android/key.properties` (random 32-character password), both gitignored, mode 600. `android/app/build.gradle.kts`: loads `key.properties`, adds a `release` signing config, and signs release with it; without the file it falls back to the debug key with a warning. Removed the template TODOs.
+**Why:** the debug fallback keeps release builds working on machines without the key; Play rejects debug-signed bundles, so it cannot publish the wrong key.
+**Verified:** `flutter build appbundle` wrote `app-release.aab` signed by the new key (`keytool -printcert`, SHA-1 `0B:74:...:0B:A6`) but exited with "failed to strip debug symbols" because the SDK cmdline-tools are missing. `flutter build apk` succeeded; `apksigner` shows the same certificate. `flutter analyze` clean, 123 of 123 tests.
+**Docs updated:** 05-setup-and-build (Release signing section, troubleshooting entry, signing-certificate note), ai/AGENT_CONTEXT (commands, rule 8a).
+**Follow-ups:** owner backs up both files; installs cmdline-tools; adds the upload SHA-1 and, after the first upload, Play's app-signing SHA-1 to Firebase for Google sign-in.
+
+---
+
+## 2026-10-21 — Website: real contact email
+
+**Request:** use `contact@spacewiretech.com` everywhere on the website for support, privacy and account deletion.
+**Changes:** every `support@evos.example` in `website/*.html` (13 in 7 pages: home, contact, privacy policy, terms, delete-my-data, 404) replaced with `contact@spacewiretech.com`, link text and `mailto:` alike, including the deletion button's prefilled subject and body.
+**Verified:** `grep` finds no `evos.example` left in `website/` or the app code. No CSS or JS changed, so the `?v=` tag stays. Pages not reopened in a browser.
+**Docs updated:** 07-known-issues (placeholder-email row removed), 01-overview, ai/AGENT_CONTEXT.
+**Follow-ups:** the Play listing's contact email should be the same address; upload the site.
+
+---
+
+## 2026-10-21 — Play Store listing text
+
+**Request:** write the Play Store short and long description.
+**Changes:** none in the repo; the text was given in chat, based on `website/index.html`.
+**Why:** the listing matches the website's claims (free notes, Google sign-in, offline, Android only).
+**Verified:** short description 80 characters or fewer, long description under 4,000. Not checked against Play Console.
+**Docs updated:** this log only.
+**Follow-ups:** the listing describes the notes app only. If the published build contains the onboarding subscription path, Play's policies on disclosing paid features and on payments need resolving with the owner before release.
+
+---
+
+## 2026-10-19 — Website: CSS version tag for Hostinger's CDN
+
+**Request:** stop Hostinger's CDN from serving stale CSS/JS after an upload: version-tag local CSS/JS links, check `.htaccess`, document the rule and a post-upload check. No upload, no commit.
+**Changes:** every `website/*.html` page: `css/styles.css` -> `css/styles.css?v=20261019` (the only local CSS/JS file; the JS is inline). `website/.htaccess`: added a www-to-bare-domain redirect written without the domain name, no HTTP-to-HTTPS rule; the 404 rule was already there.
+**Why:** the CDN caches a copy per compression method and can keep an old Brotli copy; a new query string is a new address to it. Files not renamed so existing links keep working.
+**Verified:** a script found every local link and image path pointing to an existing file and every stylesheet link tagged. Served with `python3 -m http.server`; headless Chrome showed `index.html` and `privacy-policy.html` fully styled, and `404.html` served at `/some/deep/missing/page` styled (its `<base href="/">` resolves links from the root). The `.htaccess` rules were not run (no Apache here); the CDN check needs the upload.
+**Docs updated:** 05-setup-and-build (new "Website upload (Hostinger)" section), README (table row), 07-known-issues (Website), ai/AGENT_CONTEXT (rule 26, files table).
+**Follow-ups:** owner uploads (including the hidden `.htaccess`) and runs the check in 05-setup-and-build.
+
+---
+
+## 2026-10-19 — App id renamed to com.spacewire.evos
+
+**Request:** change the package name from notes to evos. Owner's answers: the app id, to `com.spacewire.evos`; the owner registers it in Firebase; not published on Play.
+**Changes:** `android/app/build.gradle.kts` (`namespace`, `applicationId`); Kotlin sources moved to `kotlin/com/spacewire/evos/` with their `package` and imports; channel names `com.spacewire.evos/{install_referrer,analytics,payments}` on both sides (`MainActivity.kt`, `AnalyticsChannel.kt`, `PaymentsChannel.kt`, `install_referrer_service.dart`, `analytics.dart`, `payment_gateway.dart`); iOS and macOS bundle ids, Linux `APPLICATION_ID`, `iosBundleId` in `firebase_options.dart`; Maestro `appId` in every flow; `tool/deeplink.sh`; `web_links/` (`assetlinks.json`, the intent link); the website's Play links. Dart package `Evos` → `evos` in `pubspec.yaml` and the test imports. `google-services.json` left as Firebase's record of the old app.
+**Why:** a lowercase Dart name also clears the `package_names` lint. Not on Play, so no listing is tied to the old id. The Firebase Android `appId` cannot change until the owner registers the package.
+**Verified:** `flutter analyze` no issues; `flutter test` 123 of 123; debug and release APKs build and `aapt` reports `com.spacewire.evos`. On the test phone (test-mode build): link domain approved for the new package; `onboarding_deeplink` and `deeplink_local` pass; analytics calls reach Kotlin with no missing-plugin errors. `deeplink_local` first failed on Android's chooser because the old build also claimed `notes://`; the old `com.spacewire.notes` (no data) was uninstalled. Google sign-in not tried: expected to fail until Firebase has the package. The payments channel was not exercised (test mode simulates payment).
+**Docs updated:** 01-overview, 05-setup-and-build, 07-known-issues (new "App id change" section), 08-e2e-testing, 09-deep-link-onboarding, 10-analytics, ai/AGENT_CONTEXT, and the package name in the other docs and `website/`.
+**Follow-ups:** owner adds the Android app `com.spacewire.evos` with the debug SHA-1 in Firebase and sends the new `google-services.json`; then update `firebase_options.dart`, rerun the notes flows. The `notes://` scheme and the `notes-f36b3.web.app` link domain keep their names (not package names).
+
+---
+
+## 2026-10-19 — Paywall settings migration pushed
+
+**Request:** push the paywall settings migration.
+**Changes:** `supabase db push` applied `20261019120000_paywall_controls.sql` to project `sqvlgiqypqvjykczuhgz` (dry run first: it was the only pending migration). No repository code changed.
+**Verified:** `supabase migration list` shows it on the remote; the ten rows are readable with the anon key and hold the defaults (`1:1`, `true`, the rest blank); `paywall_video_url` untouched. A first attempt that piped `yes` into the push was refused by the permission system; the plain `db push` was allowed.
+**Docs updated:** 09-deep-link-onboarding (backend table), ai/AGENT_CONTEXT (state), this log.
+**Follow-ups:** none.
+
+---
+
+## 2026-10-19 — Paywall video card size; every paywall text and icon from the backend
+
+**Request:** the paywall's video card started small and grew when the video loaded; show its real size from the start. And control the whole paywall (icons, amounts, heading, description, everything) from the backend. Plan first; owner's decisions: AutoPay sentence fully backend text with the app's own as fallback when blank; icons as image links (names also accepted, as recommended); one row per setting; clearing the phone's data allowed.
+**Changes:** `remote_config.dart`: `videoAspectRatio`, `paywallSubtitle`, `featureIcons` (paired by position), `showStrikePrice`, `accentColor`, `autoPayText` with `{trial}`/`{recurring}` and `autoPayStatement`, `socialProofIcon`, `ctaText`, `upiSelectText`, `upiSheetTitle`, parsed from ten new `paywall_*` rows with fallbacks. `paywall_screen.dart`: the video card is sized by `previewCardSize` from the backend shape (default 1:1), the video fitted inside, the picture shown as a poster while loading and in the same box on failure; subtitle; `_ConfigIcon` (https image or a name from `kPaywallIcons`, falling back on error); `_Accent`; strike price switch; the texts. New `supabase/migrations/20261019120000_paywall_controls.sql` (not pushed). 11 new tests.
+**Why:** the card was 16:9 until the video reported its shape; the live video is square (1080×1080), so on the test phone the card grew from about 175 to 312 px and pushed the price down. Only settings can give the shape before any byte arrives. Icons are a fixed name list because release builds tree-shake icon fonts.
+**Verified:** `flutter analyze` one info (`package_names`); `flutter test` 123 of 123. On the SM-M127G with a test-mode build seeded with the live settings: screen captures every ~0.3 s show the card at the same bounds (y 273–903) and the price at the same place while empty, with the poster, and playing. A normal launch autoplays (Maestro's detach paused it in the captured run). With every new setting seeded: subtitle, red accent, four icons incl. an image link, no strike price, reworded AutoPay sentence with the prices, social-proof icon, "Start Trial", sheet title all shown; a square video in a 4:5 card shows bands, no resize. `onboarding_deeplink` passed (32 steps); `check-syntax` OK. Phone reset to the notes app with no data afterwards (owner allowed).
+**Docs updated:** 09-deep-link-onboarding (paywall row, AutoPay sentence, icons, video card, settings table, backend table, tests), 08-e2e-testing (flow status), ai/AGENT_CONTEXT (rule 16, file table, tests, Maestro, state).
+**Follow-ups:** migration pushed (next entry). Consider a 720 px, 2–3 MB copy of the video. The "Try Now" button follows `theme_color`, not `paywall_accent_color`.
+
+---
+
 ## 2026-10-14 — Notes title on the avatar's row; delete_and_undo fixed
 
 **Request:** put "Notes" in line with the profile avatar and move the content up.

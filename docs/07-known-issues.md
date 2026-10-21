@@ -30,6 +30,14 @@ The rules cap `body` at 20,000 characters, but the body field in the editor has 
 
 On 2026-10-01, the first launch after a fresh install, with the phone's lock screen just dismissed, stayed black for at least 80 seconds. The Dart VM had started but Firebase initialisation never logged. Six later launches on the same device were normal, so it has not been reproduced and the cause is unknown.
 
+## App id change
+
+| Item | Detail |
+|------|--------|
+| Google sign-in broken on `com.spacewire.evos` | Since 2026-10-19 the app id is `com.spacewire.evos`, but Firebase knows only `com.spacewire.notes`. Until the owner adds an Android app for the new package with the debug SHA-1 `67:1C:D4:1B:BC:14:83:62:08:A8:C4:72:A8:CA:ED:3A:DC:3B:D9:D3` and the new `appId` is put in [firebase_options.dart](../lib/firebase_options.dart), sign-in fails like an unregistered SHA-1 (a cancel, then the "keeps getting dismissed" banner). The onboarding interface does not use Firebase and is not affected. |
+| Firebase iOS app | Registered as `com.spacewire.notes`; the Xcode bundle id is now `com.spacewire.evos`. Matters only once iOS is built. |
+| Cashfree app whitelisting | If Cashfree's production UPI intent needs the app's package whitelisted, it must be `com.spacewire.evos`. Unchecked. |
+
 ## Deep-link onboarding
 
 Open decisions and unfinished parts of [09-deep-link-onboarding.md](09-deep-link-onboarding.md).
@@ -63,20 +71,19 @@ Unfinished parts of [10-analytics.md](10-analytics.md); its "Known gaps" section
 
 | Item | Detail |
 |------|--------|
-| No keys | The Mixpanel token and the Facebook app ID and client token are placeholders, so nothing is sent. No event has been seen in Mixpanel or in Facebook Events Manager. |
+| Not yet seen in the dashboards | Keys were added 2026-10-21 and both services accepted the onboarding events from the test phone (logcat). Nobody has yet looked at them inside Mixpanel or Facebook Events Manager. |
 | Sign-in and notes events never run | The six sign-in events, the eight notes events, `identify` and the reset on log out have a call site each. Sign-in and the notes screens ran on the test phone on 2026-10-14, but nobody read the log for these events, and those screens have no widget tests. |
 | iOS sends nothing | The SDKs are wired on Android only. |
 | No consent screen | The Facebook SDK collects the advertising ID once configured. Play's advertising-ID declaration must now say yes. |
-| Debug and release share a project | Test runs will be mixed in with real users once keys are added. |
+| Debug and release share a project | Test runs are mixed in with real users. The 2026-10-21 check already put test-mode events (person `debug-user`, `simulated: true`) into both. |
 
 ## Website
 
 | Item | Detail |
 |------|--------|
-| Placeholder email | Every page uses `support@evos.example`. Replace it in all pages at once with `grep -rl 'support@evos.example' website \| xargs sed -i '' 's/support@evos.example/<real address>/g'`. |
-| No domain, not uploaded | No canonical URLs, Open Graph image or sitemap, because the domain is unknown. Add them once it is chosen. `.htaccess` assumes an Apache host such as Hostinger and has not been tried on one. |
+| No domain, not uploaded | No canonical URLs, Open Graph image or sitemap, because the domain is unknown. Add them once it is chosen. `.htaccess` (www to bare domain, own 404 page) assumes an Apache host such as Hostinger and has not been tried on one. After the upload, run the CDN check in [05-setup-and-build.md](05-setup-and-build.md#website-upload-hostinger). |
 | Legal text not reviewed | The privacy policy, terms and deletion page were written from the code on 2026-10-14. The 30-day deletion promise, the "laws of India" clause and the operator name `Spacewire` need the owner's review. |
-| Play button | Points at `com.spacewire.notes` with `referrer=utm_source=website&utm_medium=button`, which opens the notes app (no `flow` key). The listing may not be live yet. |
+| Play button | Points at `com.spacewire.evos` with `referrer=utm_source=website&utm_medium=button`, which opens the notes app (no `flow` key). The listing may not be live yet. |
 
 ## Gaps
 

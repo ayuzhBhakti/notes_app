@@ -7,7 +7,7 @@ import 'package:flutter/services.dart';
 /// A Play Store link starts onboarding when its `referrer` contains
 /// `flow=onboarding`:
 ///
-///   https://play.google.com/store/apps/details?id=com.spacewire.notes&referrer=flow%3Donboarding
+///   https://play.google.com/store/apps/details?id=com.spacewire.evos&referrer=flow%3Donboarding
 ///
 /// The referrer is itself a query string, so it can carry campaign parameters
 /// alongside: `referrer=utm_source%3Dmail%26flow%3Donboarding`.
@@ -34,7 +34,7 @@ class InstallReferrerService {
   const InstallReferrerService();
 
   static const MethodChannel _channel =
-      MethodChannel('com.spacewire.notes/install_referrer');
+      MethodChannel('com.spacewire.evos/install_referrer');
 
   /// The referrer string, which is empty or Play's own default for an install
   /// that did not come from a link. Null when it could not be read at all:

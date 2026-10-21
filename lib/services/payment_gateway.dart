@@ -108,7 +108,7 @@ class CashfreePaymentGateway implements PaymentGateway {
   final Duration verifyInterval;
 
   static const MethodChannel _channel = MethodChannel(
-    'com.spacewire.notes/payments',
+    'com.spacewire.evos/payments',
   );
 
   @override

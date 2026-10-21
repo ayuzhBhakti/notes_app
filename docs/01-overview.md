@@ -5,7 +5,7 @@
 Notes is a personal note-taking app. A user signs in with Google and keeps a private list of text notes that syncs through Cloud Firestore and keeps working offline.
 
 - Dart package name: `notes`
-- Android application ID and iOS bundle ID: `com.spacewire.notes`
+- Android application ID and iOS bundle ID: `com.spacewire.evos`
 - Firebase project: `notes-f36b3`
 - Version: `1.0.0+1`
 
@@ -22,7 +22,7 @@ Notes is a personal note-taking app. A user signs in with Google and keeps a pri
 | App name and icon | "Evos" on the home screen, on Android and iOS. The icon is a white "E" with an amber spark on a violet gradient. Android 8+ uses an adaptive vector icon (`res/drawable/ic_launcher_foreground.xml`, `ic_launcher_background.xml`, with a themed-icon layer for Android 13+); older Android and iOS use PNGs made by `tool/app_icon/make_icons.sh` from the SVGs beside it (macOS only, uses Quick Look and `sips`). A 1024 px copy for stores or the backend's `app_logo_url` is `tool/app_icon/evos_logo_1024.png`. |
 | Theme | Material 3 in the launcher icon's colours: violet `#7C3AED` (fidelity scheme) with the amber `#FBBF24` as an accent, and the Poppins font (the website's), bundled in `assets/fonts/` under the OFL. Follows the system light/dark setting. Defined in `lib/theme.dart`. The Evos interface takes its seed colour from the backend instead and keeps the default font. |
 | Deep-link onboarding (Evos) | Installing from a Play Store link with `referrer=flow%3Donboarding` replaces the notes app with a second interface, called Evos: sign in with a mobile number and SMS code, a paywall with a Cashfree UPI AutoPay trial, then an "under maintenance" screen. Its name, logo, colour, paywall text and prices come from a Supabase backend. There is no way back to notes. The backend is written but not deployed, so only test mode has run. See [09-deep-link-onboarding.md](09-deep-link-onboarding.md). |
-| Website | Plain HTML in `website/`, built like CashAlert's: home page, privacy policy, terms, delete-my-data, contact, 404. It shows the notes app only and never names the onboarding interface; the legal pages still list every kind of data the app collects, including mobile number and payments. Not uploaded anywhere; no domain or support email chosen yet. |
+| Website | Plain HTML in `website/`, built like CashAlert's: home page, privacy policy, terms, delete-my-data, contact, 404. It shows the notes app only and never names the onboarding interface; the legal pages still list every kind of data the app collects, including mobile number and payments. Not uploaded anywhere; no domain chosen yet. Support, privacy and deletion requests go to `contact@spacewiretech.com`. |
 | Analytics | Mixpanel events for every step of both interfaces, and the Facebook SDK for installs and ad measurement. Android only, and off until keys are added. See [10-analytics.md](10-analytics.md). |
 
 There is no search, no folders or tags, no rich text, no attachments, no sharing, and no account deletion.

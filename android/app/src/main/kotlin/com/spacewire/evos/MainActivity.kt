@@ -1,9 +1,9 @@
-package com.spacewire.notes
+package com.spacewire.evos
 
 import com.android.installreferrer.api.InstallReferrerClient
 import com.android.installreferrer.api.InstallReferrerStateListener
-import com.spacewire.notes.analytics.AnalyticsChannel
-import com.spacewire.notes.payments.PaymentsChannel
+import com.spacewire.evos.analytics.AnalyticsChannel
+import com.spacewire.evos.payments.PaymentsChannel
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -22,7 +22,7 @@ class MainActivity : FlutterActivity() {
         // Read by lib/services/install_referrer_service.dart.
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
-            "com.spacewire.notes/install_referrer",
+            "com.spacewire.evos/install_referrer",
         ).setMethodCallHandler { call, result ->
             if (call.method == "getInstallReferrer") {
                 fetchInstallReferrer(result)

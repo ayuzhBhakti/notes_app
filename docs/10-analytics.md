@@ -2,21 +2,21 @@
 
 The app reports to two services: **Mixpanel** (every product event) and the **Facebook (Meta) SDK** (installs, app opens and the few events ads are measured on). This document lists every event, what triggers it and what it carries. Written from the code as of 2026-10-13. If you add, rename or remove an event, update this file in the same change.
 
-**Neither service is configured yet.** The three keys are placeholders, so nothing is sent to anyone. See [Configuration](#configuration).
+**Both services are configured** (keys added 2026-10-21): Mixpanel project token and the Facebook app "evos" (`2015134735846694`). Debug and release builds report to the same project and app. See [Configuration](#configuration).
 
 ## How it is built
 
 ```mermaid
 flowchart LR
     Screens["Controllers and screens"] --> Analytics["Analytics<br/>lib/services/analytics.dart"]
-    Analytics --> Channel["method channel<br/>com.spacewire.notes/analytics"]
+    Analytics --> Channel["method channel<br/>com.spacewire.evos/analytics"]
     Channel --> Kotlin["AnalyticsChannel.kt"]
     Kotlin --> Mixpanel["mixpanel-android 8.2.4"]
     Kotlin --> Meta["facebook-core 18.3.0"]
 ```
 
 - [analytics.dart](../lib/services/analytics.dart) has one method per event, so the whole list is in one file. Nothing else builds an event name.
-- The native SDKs are used directly from Kotlin over a method channel, the same way the install referrer is read, instead of through two Flutter plugins. The Kotlin is in [android/app/src/main/kotlin/com/spacewire/notes/analytics/](../android/app/src/main/kotlin/com/spacewire/notes/analytics/).
+- The native SDKs are used directly from Kotlin over a method channel, the same way the install referrer is read, instead of through two Flutter plugins. The Kotlin is in [android/app/src/main/kotlin/com/spacewire/evos/analytics/](../android/app/src/main/kotlin/com/spacewire/evos/analytics/).
 - Calls are fire-and-forget. Nothing waits for analytics, and a failure in it is swallowed: it can never stop a screen from working.
 - **Android only.** On iOS every call is dropped before it leaves Dart.
 - Event names are Title Case. Property names are snake_case.
@@ -31,9 +31,20 @@ All three keys are in [analytics_keys.xml](../android/app/src/main/res/values/an
 | `facebook_app_id` | developers.facebook.com: the app, App settings, Basic |
 | `facebook_client_token` | developers.facebook.com: the app, App settings, Advanced |
 
-While a key is still its placeholder (`YOUR_MIXPANEL_TOKEN`, `YOUR_FACEBOOK_APP_ID`, `YOUR_FACEBOOK_CLIENT_TOKEN`), that SDK is never started. The Facebook SDK needs both of its keys. `AndroidManifest.xml` also sets `AutoInitEnabled` and `AutoLogAppEventsEnabled` to `false`, so an unconfigured build does not contact Facebook at all; [MetaSdk.kt](../android/app/src/main/kotlin/com/spacewire/notes/analytics/MetaSdk.kt) switches both back on once the keys are real.
+While a key is still its placeholder (`YOUR_MIXPANEL_TOKEN`, `YOUR_FACEBOOK_APP_ID`, `YOUR_FACEBOOK_CLIENT_TOKEN`), that SDK is never started. The Facebook SDK needs both of its keys. `AndroidManifest.xml` also sets `AutoInitEnabled` and `AutoLogAppEventsEnabled` to `false`, so an unconfigured build does not contact Facebook at all; [MetaSdk.kt](../android/app/src/main/kotlin/com/spacewire/evos/analytics/MetaSdk.kt) switches both back on once the keys are real.
 
 Use a Mixpanel project and a Facebook app made for Notes. Do not paste in another app's keys: its events would be mixed with this app's.
+
+To register the Android app in that Facebook app (App settings, Basic, Add platform, Android), give it:
+
+| Field | Value |
+|-------|-------|
+| Package name | `com.spacewire.evos` |
+| Class name | `com.spacewire.evos.MainActivity` |
+| Key hash, release (upload key, `CN=Spacewire`) | `QkzkxxTG+N0r4LO1EhaGeMzA12A=` |
+| Key hash, debug (this machine's debug keystore) | `ZxzUG7wUg2IIqMRyqMrtOtw72dM=` |
+
+Both hashes were computed on 2026-10-21 from the signed APKs with `apksigner verify --print-certs` (SHA-1 in hex, converted to Base64). Once Play App Signing re-signs the app, also add the hash of Play's app signing key: take its SHA-1 from Play Console (Test and release, App integrity) and run `echo <SHA-1 without colons> | xxd -r -p | openssl base64`.
 
 A debug build prints every call to the Flutter console, tagged `[analytics]`, followed by `(NOT sent: the SDK has no key)` when the SDK is off.
 
@@ -165,8 +176,13 @@ Notes, for a new user:
 
 ## What has been checked
 
-- **Nothing has been seen inside a Mixpanel project or in Facebook Events Manager**, because neither has keys yet.
-- With placeholder keys (2026-10-13, test phone): the app starts, both SDKs report themselves disabled, and the Facebook SDK makes no network request.
+- **With the real keys (2026-10-21, test phone, test-mode debug build), both services accepted every event sent.** Checked in logcat, not inside Mixpanel or Events Manager:
+  - Facebook confirmed the App ID and client token belong together (a Graph API read answered with the app name "evos").
+  - Mixpanel: `App Opened`, `Install Attributed`, `Deep Link Opened`, `Phone Entry Viewed`, `OTP Requested`, `OTP Verified`, `Paywall Viewed`, `Checkout Started`, `Subscription Succeeded` (`simulated: true`), `Maintenance Viewed`, `Signed Out`, and the `identify` profile update. `/track` and `/engage` both answered `status: 1`.
+  - Facebook: `fb_sdk_initialize`, `MOBILE_APP_INSTALL` (first launch after clearing data), `fb_mobile_activate_app` and `fb_mobile_initiated_checkout`, each answered `success: true`. `metaSubscribe` was correctly skipped for the simulated payment. `metaCompleteRegistration` did not fire, because test mode's `debug-user` is never a new user.
+  - On the first launch after install the SDK logs `GraphRequest can't be used when Facebook SDK isn't fully initialized` about five times (see [05-setup-and-build.md](05-setup-and-build.md#logcat-errors-that-are-expected)). Harmless: the same launch then fetched the SDK settings and sent the install.
+- Debug builds log every Facebook request and App Events flush (tags `FacebookSDK.Request`, `FacebookSDK.Response`, `FacebookSDK.AppEvents`), as they already did for Mixpanel (`MixpanelAPI.*`). Logcat cuts long lines at about 4 KB, so a Mixpanel batch's event list looks truncated; the `raw size` line shows the whole batch went.
+- Events still queued when the app is killed are kept on the device and sent on the next launch. Maestro's `clearState` deletes them, so a flow that ends with it loses its last minute of events.
 - With throwaway dummy keys (2026-10-13, test phone), the earlier onboarding flow reached both SDKs. **The events were then changed** (the details-form events were replaced by the phone and code events) and that check has not been repeated: the current onboarding events are covered by widget tests in [analytics_test.dart](../test/analytics_test.dart) only.
 - A real (not simulated) `Subscription Succeeded`, and Facebook's purchase events, have never been sent: no real payment has been made.
 - **The six sign-in events, the eight notes events, `identify` and the reset on log out have never run**, on a phone or in a test. Google sign-in is blocked on the test phone ([07-known-issues.md](07-known-issues.md)), and the signed-in screens have no widget tests.

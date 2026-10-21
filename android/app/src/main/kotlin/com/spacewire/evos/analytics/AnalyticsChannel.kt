@@ -1,4 +1,4 @@
-package com.spacewire.notes.analytics
+package com.spacewire.evos.analytics
 
 import android.app.Application
 import android.os.Bundle
@@ -24,7 +24,7 @@ class AnalyticsChannel private constructor(private val application: Application)
         private const val TAG = "AnalyticsChannel"
 
         // Must equal the channel name in lib/services/analytics.dart.
-        private const val NAME = "com.spacewire.notes/analytics"
+        private const val NAME = "com.spacewire.evos/analytics"
 
         fun register(application: Application, messenger: BinaryMessenger) {
             runCatching { MixpanelSdk.initialize(application) }

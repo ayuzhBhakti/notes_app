@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:Evos/models/onboarding.dart';
-import 'package:Evos/services/deep_link_service.dart';
-import 'package:Evos/services/evos_backend.dart';
-import 'package:Evos/services/payment_gateway.dart';
+import 'package:evos/models/onboarding.dart';
+import 'package:evos/services/deep_link_service.dart';
+import 'package:evos/services/evos_backend.dart';
+import 'package:evos/services/payment_gateway.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/harness.dart';
@@ -304,6 +304,52 @@ void main() {
       expect(find.bySemanticsIdentifier('login_carousel'), findsOneWidget);
     });
 
+    testWidgets(
+        'a first launch waits for slow settings, then shows the carousel '
+        'with the keyboard closed', (tester) async {
+      await launch(
+        tester,
+        coldStartLink: onboardingLink,
+        setup: (FakeBackend b) => b
+          ..config = slides
+          ..configDelay = const Duration(seconds: 1),
+        settle: false,
+      );
+
+      // No form yet: drawn now, it would have no carousel and open the
+      // keyboard, and the carousel would arrive behind it.
+      expect(find.text(_phoneScreen), findsNothing);
+      expect(find.byType(TextField), findsNothing);
+
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+
+      expect(find.bySemanticsIdentifier('login_carousel'), findsOneWidget);
+      expect(find.text('Hear every payment'), findsOneWidget);
+      expect(find.text(_phoneScreen), findsOneWidget);
+      expect(tester.testTextInput.isVisible, isFalse);
+    });
+
+    testWidgets('settings that never answer still show the form',
+        (tester) async {
+      await launch(
+        tester,
+        coldStartLink: onboardingLink,
+        setup: (FakeBackend b) =>
+            b.configDelay = const Duration(seconds: 30),
+        settle: false,
+      );
+      expect(find.text(_phoneScreen), findsNothing);
+
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pump();
+
+      expect(find.text(_phoneScreen), findsOneWidget);
+      expect(find.bySemanticsIdentifier('login_carousel'), findsNothing);
+      // Let the slow answer arrive before the test ends.
+      await tester.pump(const Duration(seconds: 30));
+    });
+
     testWidgets('with no slides from the backend there is no carousel',
         (tester) async {
       await launch(tester, coldStartLink: onboardingLink);
@@ -448,6 +494,64 @@ void main() {
       expect(find.bySemanticsIdentifier('paywall_video'), findsNothing);
       await tapTryNow(tester);
       expect(h.gateway.paidWith, <String>['PhonePe']);
+    });
+
+    testWidgets('the video card has the backend shape even when it fails',
+        (tester) async {
+      await launch(
+        tester,
+        coldStartLink: onboardingLink,
+        setup: (FakeBackend b) => b.config = <String, String>{
+          'paywall_video_url': 'https://cdn.example.com/preview.mp4',
+          'paywall_preview_image_url': 'https://cdn.example.com/poster.jpg',
+          'paywall_video_aspect_ratio': '9:16',
+        },
+      );
+      await signIn(tester);
+
+      // The 800 x 600 test screen: 752 wide after padding, and at most 45%
+      // of 600 tall, so a 9:16 card is 270 tall and 151.875 wide. The
+      // picture stands in for the video in the same box.
+      expect(tester.getSize(find.byType(Image)), const Size(151.875, 270));
+    });
+
+    testWidgets('every word and icon can come from the backend',
+        (tester) async {
+      await launch(
+        tester,
+        coldStartLink: onboardingLink,
+        gateway: FakeGateway(apps: const <UpiApp>[]),
+        setup: (FakeBackend b) => b.config = <String, String>{
+          'cashfree_trial_amount': '5',
+          'cashfree_recurring_amount': '499',
+          'paywall_subtitle': 'Everything, for one rupee a day',
+          'paywall_features': 'Alpha|Beta',
+          'paywall_feature_icons': 'lock|',
+          'paywall_show_strike_price': 'false',
+          'paywall_autopay_text': 'Pay {trial} now, then {recurring} a month.',
+          'paywall_social_proofs': 'Asha just joined',
+          'paywall_social_proof_icon': 'bolt',
+          'paywall_cta_text': 'Start now',
+          'paywall_upi_select_text': 'Choose an app',
+          'paywall_upi_sheet_title': 'Pick your UPI app',
+        },
+      );
+      await signIn(tester);
+
+      expect(find.text('Everything, for one rupee a day'), findsOneWidget);
+      expect(find.byIcon(Icons.lock_rounded), findsOneWidget);
+      // The second feature has no icon of its own: a tick.
+      expect(find.byIcon(Icons.check_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.bolt_rounded), findsOneWidget);
+      // No struck-through monthly price.
+      expect(find.text('₹499'), findsNothing);
+      expect(find.text('Pay ₹5 now, then ₹499 a month.'), findsOneWidget);
+      expect(find.text('Choose an app'), findsOneWidget);
+      expect(find.text('Try Now'), findsNothing);
+
+      await tester.tap(find.text('Start now'));
+      await tester.pumpAndSettle();
+      expect(find.text('Pick your UPI app'), findsOneWidget);
     });
 
     testWidgets('takes its colour from the backend', (tester) async {

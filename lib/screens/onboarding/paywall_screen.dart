@@ -15,8 +15,10 @@ import '../../widgets/brand.dart';
 /// Laid out like the CashAlert paywall, without its "Log out": heading with a
 /// pill, rating, preview,
 /// feature badges, the two prices, a line of social proof, and a bottom bar
-/// with the UPI app on the left and "Try Now" on the right. The words, prices
-/// and picture come from the backend; a part with nothing to show is left out.
+/// with the UPI app on the left and "Try Now" on the right. Every word, price,
+/// icon, picture and the accent colour can come from the backend (the
+/// `paywall_*` rows of `app_config`); a part with nothing to show is left out,
+/// and a blank text falls back to the app's own.
 class PaywallScreen extends ConsumerStatefulWidget {
   const PaywallScreen({super.key});
 
@@ -55,7 +57,11 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     final UpiApp? chosen = await showModalBottomSheet<UpiApp>(
       context: context,
       showDragHandle: true,
-      builder: (BuildContext context) => _UpiSheet(apps: apps, current: current),
+      builder: (BuildContext context) => _UpiSheet(
+        apps: apps,
+        current: current,
+        title: ref.read(remoteConfigProvider).upiSheetTitle,
+      ),
     );
     if (chosen != null && mounted) {
       if (chosen.packageName != current?.packageName) {
@@ -88,6 +94,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             .where((UpiApp a) => a.packageName == _picked?.packageName)
             .firstOrNull ??
         apps.firstOrNull;
+    final _Accent accent = _Accent.of(config.accentColor, colors);
 
     return Scaffold(
       body: SafeArea(
@@ -107,7 +114,17 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
                 child: Column(
                   children: <Widget>[
-                    _Heading(config: config),
+                    _Heading(config: config, accent: accent),
+                    if (config.paywallSubtitle.isNotEmpty) ...<Widget>[
+                      const SizedBox(height: 10),
+                      Text(
+                        config.paywallSubtitle,
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
                     if (config.ratingValue.isNotEmpty) ...<Widget>[
                       const SizedBox(height: 12),
                       _Rating(
@@ -122,6 +139,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                         key: ValueKey<String>(config.previewVideoUrl!),
                         url: config.previewVideoUrl!,
                         fallbackImageUrl: config.previewImageUrl,
+                        aspectRatio: config.videoAspectRatio,
                         paused: busy,
                       ),
                     ] else if (config.previewImageUrl != null) ...<Widget>[
@@ -130,17 +148,16 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     ],
                     if (config.features.isNotEmpty) ...<Widget>[
                       const SizedBox(height: 26),
-                      _Features(features: config.features),
+                      _Features(config: config, accent: accent),
                     ],
                     const SizedBox(height: 28),
-                    _Price(config: config),
+                    _Price(config: config, accent: accent),
                     const SizedBox(height: 12),
-                    // Always shown, and never from the backend: this is the
-                    // sentence that says money will be taken every month.
+                    // Always shown: the sentence that says money will be taken
+                    // every month. The backend may word it; blank falls back
+                    // to the app's own, so it can never disappear.
                     Text(
-                      '${config.trialPriceLabel} today for the first 24 hours, '
-                      'then ${config.recurringPriceLabel} every month by UPI '
-                      'AutoPay. Cancel any time in your UPI app.',
+                      config.autoPayStatement,
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: colors.onSurfaceVariant,
@@ -148,7 +165,11 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     ),
                     if (config.socialProofs.isNotEmpty) ...<Widget>[
                       const SizedBox(height: 20),
-                      _SocialProof(lines: config.socialProofs),
+                      _SocialProof(
+                        lines: config.socialProofs,
+                        icon: config.socialProofIcon,
+                        color: accent.color,
+                      ),
                     ],
                     if (gateway.isSimulated) ...<Widget>[
                       const SizedBox(height: 16),
@@ -209,7 +230,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                             children: <Widget>[
                               Flexible(
                                 child: Text(
-                                  selected?.name ?? 'Select UPI App',
+                                  selected?.name ?? config.upiSelectText,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: theme.textTheme.titleMedium?.copyWith(
@@ -244,7 +265,11 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                                     strokeWidth: 2,
                                   ),
                                 )
-                              : const Text('Try Now'),
+                              : Text(
+                                  config.ctaText,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                         ),
                       ),
                     ),
@@ -261,9 +286,10 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
 /// "1-Day [₹3] Trial": text, a filled pill, text.
 class _Heading extends StatelessWidget {
-  const _Heading({required this.config});
+  const _Heading({required this.config, required this.accent});
 
   final RemoteConfig config;
+  final _Accent accent;
 
   @override
   Widget build(BuildContext context) {
@@ -287,7 +313,7 @@ class _Heading extends StatelessWidget {
             Text(config.paywallTitlePrefix, style: style),
           DecoratedBox(
             decoration: BoxDecoration(
-              color: theme.colorScheme.primary,
+              color: accent.color,
               borderRadius: BorderRadius.circular(999),
             ),
             child: Padding(
@@ -295,7 +321,7 @@ class _Heading extends StatelessWidget {
               child: Text(
                 badge,
                 style: theme.textTheme.titleMedium?.copyWith(
-                  color: theme.colorScheme.onPrimary,
+                  color: accent.onColor,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -394,22 +420,29 @@ class _Preview extends StatelessWidget {
 }
 
 /// The backend's video in the preview card: starts by itself, with sound,
-/// loops, and pauses or plays on a tap, as CashAlert's does. Unlike
-/// CashAlert's, it is never cropped: the card takes the video's shape. It is
-/// paused while a payment runs, and the plugin pauses it while the app is in
-/// the background.
+/// loops, and pauses or plays on a tap, as CashAlert's does. It is paused
+/// while a payment runs, and the plugin pauses it while the app is in the
+/// background.
 ///
-/// If the video cannot be played the picture is shown instead, or nothing.
+/// The card has the shape the backend set from the first frame and never
+/// changes size: it used to start 16:9 and grow when the video reported its
+/// own shape, pushing the price down. The video is fitted inside, whole.
+/// The picture shows in the card while the video loads, and instead of it if
+/// it cannot be played; with no picture a failed video leaves no card.
 class _PreviewVideo extends StatefulWidget {
   const _PreviewVideo({
     super.key,
     required this.url,
     required this.fallbackImageUrl,
+    required this.aspectRatio,
     required this.paused,
   });
 
   final String url;
   final String? fallbackImageUrl;
+
+  /// Width over height, from the backend.
+  final double aspectRatio;
 
   /// True while a payment runs.
   final bool paused;
@@ -470,16 +503,46 @@ class _PreviewVideoState extends State<_PreviewVideo> {
     _controller.value.isPlaying ? _controller.pause() : _controller.play();
   }
 
+  Widget _picture(String url) => Image.network(
+        url,
+        fit: BoxFit.cover,
+        excludeFromSemantics: true,
+        errorBuilder: (BuildContext _, Object _, StackTrace? _) =>
+            const SizedBox.shrink(),
+      );
+
   @override
   Widget build(BuildContext context) {
-    if (_failed) {
-      final String? image = widget.fallbackImageUrl;
-      return image == null ? const SizedBox.shrink() : _Preview(url: image);
-    }
+    final String? image = widget.fallbackImageUrl;
+    if (_failed && image == null) return const SizedBox.shrink();
     final ColorScheme colors = Theme.of(context).colorScheme;
     // A tall video must not push the price and the button off the screen.
     final double maxHeight = MediaQuery.sizeOf(context).height * 0.45;
 
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints box) {
+        final Size card = previewCardSize(
+          maxWidth: box.maxWidth,
+          maxHeight: maxHeight,
+          ratio: widget.aspectRatio,
+        );
+        return Center(
+          child: SizedBox.fromSize(
+            size: card,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: ColoredBox(
+                color: colors.surfaceContainerHighest,
+                child: _failed ? _picture(image!) : _player(colors, image),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _player(ColorScheme colors, String? poster) {
     return Semantics(
       identifier: 'paywall_video',
       label: 'Preview video',
@@ -488,71 +551,46 @@ class _PreviewVideoState extends State<_PreviewVideo> {
         onTap: _toggle,
         child: ValueListenableBuilder<VideoPlayerValue>(
           valueListenable: _controller,
-          builder: (BuildContext context, VideoPlayerValue value, _) =>
-              LayoutBuilder(
-            builder: (BuildContext context, BoxConstraints box) {
-              // The card takes the video's own shape, so nothing is cropped:
-              // full width, and the height that width implies. A video too
-              // tall for that is shown narrower, centred, still whole.
-              // Until the video says its shape, a 16:9 card holds its place.
-              final double ratio = value.isInitialized && value.aspectRatio > 0
-                  ? value.aspectRatio
-                  : 16 / 9;
-              double width = box.maxWidth;
-              double height = width / ratio;
-              if (height > maxHeight) {
-                height = maxHeight;
-                width = height * ratio;
-              }
-
-              return Center(
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  curve: Curves.easeOut,
-                  width: width,
-                  height: height,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: ColoredBox(
-                      color: colors.surfaceContainerHighest,
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: <Widget>[
-                          if (value.isInitialized) VideoPlayer(_controller),
-                          if (!value.isInitialized || value.isBuffering)
-                            Center(
-                              child: SizedBox.square(
-                                dimension: 32,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 3,
-                                  color: colors.primary,
-                                ),
-                              ),
-                            )
-                          else if (!value.isPlaying)
-                            Center(
-                              child: DecoratedBox(
-                                decoration: const BoxDecoration(
-                                  color: Color(0x99000000),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Padding(
-                                  padding: EdgeInsets.all(10),
-                                  child: Icon(
-                                    Icons.play_arrow_rounded,
-                                    size: 32,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ),
-                        ],
+          builder: (BuildContext context, VideoPlayerValue value, _) => Stack(
+            fit: StackFit.expand,
+            children: <Widget>[
+              if (!value.isInitialized && poster != null) _picture(poster),
+              if (value.isInitialized)
+                FittedBox(
+                  child: SizedBox.fromSize(
+                    // The video's own size, scaled down whole into the card.
+                    size: value.size.isEmpty ? const Size(1, 1) : value.size,
+                    child: VideoPlayer(_controller),
+                  ),
+                ),
+              if (!value.isInitialized || value.isBuffering)
+                Center(
+                  child: SizedBox.square(
+                    dimension: 32,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 3,
+                      color: colors.primary,
+                    ),
+                  ),
+                )
+              else if (!value.isPlaying)
+                Center(
+                  child: DecoratedBox(
+                    decoration: const BoxDecoration(
+                      color: Color(0x99000000),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Padding(
+                      padding: EdgeInsets.all(10),
+                      child: Icon(
+                        Icons.play_arrow_rounded,
+                        size: 32,
+                        color: Colors.white,
                       ),
                     ),
                   ),
                 ),
-              );
-            },
+            ],
           ),
         ),
       ),
@@ -561,18 +599,19 @@ class _PreviewVideoState extends State<_PreviewVideo> {
 }
 
 class _Features extends StatelessWidget {
-  const _Features({required this.features});
+  const _Features({required this.config, required this.accent});
 
-  final List<String> features;
+  final RemoteConfig config;
+  final _Accent accent;
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
-    final ColorScheme colors = theme.colorScheme;
+    final List<String> features = config.features;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        for (final String feature in features)
+        for (int i = 0; i < features.length; i++)
           Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -580,21 +619,22 @@ class _Features extends StatelessWidget {
                 children: <Widget>[
                   DecoratedBox(
                     decoration: BoxDecoration(
-                      color: colors.primaryContainer,
+                      color: accent.container,
                       shape: BoxShape.circle,
                     ),
                     child: Padding(
                       padding: const EdgeInsets.all(10),
-                      child: Icon(
-                        Icons.check_rounded,
+                      child: _ConfigIcon(
+                        value: config.featureIcon(i),
+                        fallback: Icons.check_rounded,
                         size: 20,
-                        color: colors.onPrimaryContainer,
+                        color: accent.onContainer,
                       ),
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    feature,
+                    features[i],
                     textAlign: TextAlign.center,
                     style: theme.textTheme.labelMedium,
                   ),
@@ -609,9 +649,10 @@ class _Features extends StatelessWidget {
 
 /// The monthly price struck through beside the trial price, large.
 class _Price extends StatelessWidget {
-  const _Price({required this.config});
+  const _Price({required this.config, required this.accent});
 
   final RemoteConfig config;
+  final _Accent accent;
 
   @override
   Widget build(BuildContext context) {
@@ -625,19 +666,21 @@ class _Price extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: <Widget>[
-          Text(
-            config.recurringPriceLabel,
-            style: theme.textTheme.titleLarge?.copyWith(
-              color: colors.onSurfaceVariant,
-              decoration: TextDecoration.lineThrough,
-              decorationColor: colors.onSurfaceVariant,
+          if (config.showStrikePrice) ...<Widget>[
+            Text(
+              config.recurringPriceLabel,
+              style: theme.textTheme.titleLarge?.copyWith(
+                color: colors.onSurfaceVariant,
+                decoration: TextDecoration.lineThrough,
+                decorationColor: colors.onSurfaceVariant,
+              ),
             ),
-          ),
-          const SizedBox(width: 14),
+            const SizedBox(width: 14),
+          ],
           Text(
             config.trialPriceLabel,
             style: theme.textTheme.displaySmall?.copyWith(
-              color: colors.primary,
+              color: accent.color,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -649,9 +692,17 @@ class _Price extends StatelessWidget {
 
 /// One line at a time from the backend's list, changing every few seconds.
 class _SocialProof extends StatefulWidget {
-  const _SocialProof({required this.lines});
+  const _SocialProof({
+    required this.lines,
+    required this.icon,
+    required this.color,
+  });
 
   final List<String> lines;
+
+  /// From the backend; blank shows a sparkle.
+  final String icon;
+  final Color color;
 
   @override
   State<_SocialProof> createState() => _SocialProofState();
@@ -694,7 +745,12 @@ class _SocialProofState extends State<_SocialProof> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: <Widget>[
-            Icon(Icons.auto_awesome, size: 18, color: colors.primary),
+            _ConfigIcon(
+              value: widget.icon,
+              fallback: Icons.auto_awesome,
+              size: 18,
+              color: widget.color,
+            ),
             const SizedBox(width: 8),
             Expanded(
               child: AnimatedSwitcher(
@@ -745,10 +801,15 @@ class _PurchaseError extends StatelessWidget {
 }
 
 class _UpiSheet extends StatelessWidget {
-  const _UpiSheet({required this.apps, required this.current});
+  const _UpiSheet({
+    required this.apps,
+    required this.current,
+    required this.title,
+  });
 
   final List<UpiApp> apps;
   final UpiApp? current;
+  final String title;
 
   @override
   Widget build(BuildContext context) {
@@ -763,7 +824,7 @@ class _UpiSheet extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: Text(
-                'Pay with UPI AutoPay',
+                title,
                 style: theme.textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
@@ -804,4 +865,137 @@ class _UpiSheet extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The names the backend can use for an icon, besides an https image.
+///
+/// A fixed list on purpose: release builds keep only the icons the code
+/// names, so an icon chosen by number on the server would draw as a blank
+/// box. Add to this list to offer another.
+const Map<String, IconData> kPaywallIcons = <String, IconData>{
+  'check': Icons.check_rounded,
+  'check_circle': Icons.check_circle_rounded,
+  'verified': Icons.verified_rounded,
+  'lock': Icons.lock_rounded,
+  'shield': Icons.shield_rounded,
+  'security': Icons.security_rounded,
+  'star': Icons.star_rounded,
+  'sparkle': Icons.auto_awesome,
+  'bolt': Icons.bolt_rounded,
+  'rocket': Icons.rocket_launch_rounded,
+  'bell': Icons.notifications_rounded,
+  'rupee': Icons.currency_rupee_rounded,
+  'wallet': Icons.account_balance_wallet_rounded,
+  'card': Icons.credit_card_rounded,
+  'gift': Icons.card_giftcard_rounded,
+  'offer': Icons.local_offer_rounded,
+  'crown': Icons.workspace_premium_rounded,
+  'diamond': Icons.diamond_rounded,
+  'heart': Icons.favorite_rounded,
+  'thumb_up': Icons.thumb_up_rounded,
+  'people': Icons.groups_rounded,
+  'support': Icons.support_agent_rounded,
+  'clock': Icons.schedule_rounded,
+  'calendar': Icons.calendar_month_rounded,
+  'cancel': Icons.cancel_rounded,
+  'phone': Icons.smartphone_rounded,
+  'cloud': Icons.cloud_done_rounded,
+  'ad_free': Icons.block_rounded,
+};
+
+/// An icon chosen by the backend: an https image, a name from
+/// [kPaywallIcons], or [fallback] for blank, unknown or a broken image.
+class _ConfigIcon extends StatelessWidget {
+  const _ConfigIcon({
+    required this.value,
+    required this.fallback,
+    required this.size,
+    required this.color,
+  });
+
+  final String value;
+  final IconData fallback;
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final Uri? uri = Uri.tryParse(value);
+    if (uri != null && uri.isScheme('https') && uri.host.isNotEmpty) {
+      return Image.network(
+        value,
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        excludeFromSemantics: true,
+        // Decoded at the size drawn: the backend may send a large file.
+        cacheWidth: (size * MediaQuery.devicePixelRatioOf(context)).round(),
+        errorBuilder: (BuildContext _, Object _, StackTrace? _) =>
+            Icon(fallback, size: size, color: color),
+      );
+    }
+    return Icon(
+      kPaywallIcons[value.toLowerCase()] ?? fallback,
+      size: size,
+      color: color,
+    );
+  }
+}
+
+/// The preview card's size: full width at the backend's [ratio], or narrower
+/// when that would be taller than [maxHeight]. It depends on the settings
+/// alone, never on the video, so it is the same before and after the video
+/// loads.
+@visibleForTesting
+Size previewCardSize({
+  required double maxWidth,
+  required double maxHeight,
+  required double ratio,
+}) {
+  double width = maxWidth;
+  double height = width / ratio;
+  if (height > maxHeight) {
+    height = maxHeight;
+    width = height * ratio;
+  }
+  return Size(width, height);
+}
+
+/// The colours the backend's accent decides, or the theme's when it sends
+/// none, which keeps the screen exactly as it is without the setting.
+@immutable
+class _Accent {
+  const _Accent({
+    required this.color,
+    required this.onColor,
+    required this.container,
+    required this.onContainer,
+  });
+
+  factory _Accent.of(Color? backend, ColorScheme colors) {
+    if (backend == null) {
+      return _Accent(
+        color: colors.primary,
+        onColor: colors.onPrimary,
+        container: colors.primaryContainer,
+        onContainer: colors.onPrimaryContainer,
+      );
+    }
+    // Text on the pill must stay readable whatever colour is sent.
+    final Color on =
+        ThemeData.estimateBrightnessForColor(backend) == Brightness.dark
+            ? Colors.white
+            : Colors.black;
+    return _Accent(
+      color: backend,
+      onColor: on,
+      container: backend.withValues(alpha: 0.15),
+      onContainer: backend,
+    );
+  }
+
+  final Color color;
+  final Color onColor;
+  final Color container;
+  final Color onContainer;
 }

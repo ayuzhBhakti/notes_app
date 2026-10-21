@@ -24,7 +24,7 @@ class MethodChannelAnalyticsClient implements AnalyticsClient {
   const MethodChannelAnalyticsClient();
 
   static const MethodChannel _channel = MethodChannel(
-    'com.spacewire.notes/analytics',
+    'com.spacewire.evos/analytics',
   );
 
   @override

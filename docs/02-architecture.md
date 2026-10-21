@@ -69,8 +69,8 @@ Analytics sits beside this: controllers and screens call `Analytics`, which send
 | [lib/widgets/note_tile.dart](../lib/widgets/note_tile.dart) | One card of the notes list |
 | [lib/widgets/track_view.dart](../lib/widgets/track_view.dart) | `TrackView`: reports a screen view once, for screens that are stateless |
 | [lib/utils/errors.dart](../lib/utils/errors.dart) | `describeError`: maps any thrown object to a user-facing `AppFailure`. `errorCode`: a short name for the same error, for analytics |
-| [android/.../notes/analytics/](../android/app/src/main/kotlin/com/spacewire/notes/analytics/) | Kotlin: `AnalyticsChannel`, `MixpanelSdk`, `MetaSdk` |
-| [android/.../notes/payments/](../android/app/src/main/kotlin/com/spacewire/notes/payments/) | Kotlin: `PaymentsChannel`, the Cashfree SDK and the list of installed UPI apps |
+| [android/.../notes/analytics/](../android/app/src/main/kotlin/com/spacewire/evos/analytics/) | Kotlin: `AnalyticsChannel`, `MixpanelSdk`, `MetaSdk` |
+| [android/.../notes/payments/](../android/app/src/main/kotlin/com/spacewire/evos/payments/) | Kotlin: `PaymentsChannel`, the Cashfree SDK and the list of installed UPI apps |
 | [supabase/](../supabase/) | The onboarding backend: one migration and four edge functions. Not deployed |
 | [lib/utils/format.dart](../lib/utils/format.dart) | `formatNoteTime`: relative time for list rows |
 | [lib/utils/validators.dart](../lib/utils/validators.dart) | The Indian mobile-number rule for the sign-in screen |

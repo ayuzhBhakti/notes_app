@@ -1,10 +1,10 @@
-package com.spacewire.notes.analytics
+package com.spacewire.evos.analytics
 
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.util.Log
 import com.mixpanel.android.mpmetrics.MixpanelAPI
-import com.spacewire.notes.R
+import com.spacewire.evos.R
 import org.json.JSONObject
 
 object MixpanelSdk {

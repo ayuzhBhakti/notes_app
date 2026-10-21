@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:Evos/models/install_source.dart';
-import 'package:Evos/services/analytics.dart';
-import 'package:Evos/services/evos_backend.dart';
-import 'package:Evos/services/payment_gateway.dart';
+import 'package:evos/models/install_source.dart';
+import 'package:evos/services/analytics.dart';
+import 'package:evos/services/evos_backend.dart';
+import 'package:evos/services/payment_gateway.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/harness.dart';

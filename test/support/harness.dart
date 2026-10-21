@@ -4,13 +4,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:Evos/main.dart';
-import 'package:Evos/providers.dart';
-import 'package:Evos/services/analytics.dart';
-import 'package:Evos/services/deep_link_service.dart';
-import 'package:Evos/services/evos_backend.dart';
-import 'package:Evos/services/onboarding_store.dart';
-import 'package:Evos/services/payment_gateway.dart';
+import 'package:evos/main.dart';
+import 'package:evos/providers.dart';
+import 'package:evos/services/analytics.dart';
+import 'package:evos/services/deep_link_service.dart';
+import 'package:evos/services/evos_backend.dart';
+import 'package:evos/services/onboarding_store.dart';
+import 'package:evos/services/payment_gateway.dart';
 
 // Shared by the widget tests that pump the real NotesApp. Firebase is never
 // initialised: the only Firebase-backed provider the signed-out path reads is
@@ -61,6 +61,8 @@ class FakeBackend implements EvosBackend {
   final OnboardingStore _store;
 
   Map<String, String> config = <String, String>{};
+  // How long the settings take to answer, as on a slow first launch.
+  Duration configDelay = Duration.zero;
   bool subscribed = false;
   bool newUser = false;
 
@@ -102,6 +104,7 @@ class FakeBackend implements EvosBackend {
 
   @override
   Future<Map<String, String>> fetchConfig() async {
+    if (configDelay > Duration.zero) await Future<void>.delayed(configDelay);
     if (configError != null) throw BackendFailure(configError!);
     return config;
   }
@@ -169,6 +172,8 @@ Future<Harness> launch(
   String? installReferrer,
   FakeGateway? gateway,
   void Function(FakeBackend backend)? setup,
+  // False returns after the first frames, for what shows while loading.
+  bool settle = true,
 }) async {
   if (coldStartLink != null) {
     tester.platformDispatcher.defaultRouteNameTestValue = coldStartLink;
@@ -199,7 +204,11 @@ Future<Harness> launch(
       child: const NotesApp(),
     ),
   );
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pump();
+  }
   return harness;
 }
 

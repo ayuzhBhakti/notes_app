@@ -8,7 +8,7 @@
 #   ./tool/deeplink.sh --check    run the automated check of cold and warm links
 set -euo pipefail
 
-APP_ID="com.spacewire.notes"
+APP_ID="com.spacewire.evos"
 LINK="notes://onboarding"
 ADB="${ANDROID_HOME:-$HOME/Library/Android/sdk}/platform-tools/adb"
 

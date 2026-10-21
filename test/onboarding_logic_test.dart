@@ -1,12 +1,13 @@
-import 'dart:ui' show Color;
+import 'dart:ui' show Color, Size;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:Evos/models/country.dart';
-import 'package:Evos/models/onboarding.dart';
-import 'package:Evos/models/remote_config.dart';
-import 'package:Evos/services/deep_link_service.dart';
-import 'package:Evos/services/install_referrer_service.dart';
-import 'package:Evos/utils/validators.dart';
+import 'package:evos/models/country.dart';
+import 'package:evos/models/onboarding.dart';
+import 'package:evos/models/remote_config.dart';
+import 'package:evos/screens/onboarding/paywall_screen.dart';
+import 'package:evos/services/deep_link_service.dart';
+import 'package:evos/services/install_referrer_service.dart';
+import 'package:evos/utils/validators.dart';
 
 void main() {
   group('isOnboardingLink', () {
@@ -268,6 +269,110 @@ void main() {
       expect(decodeConfigRows(encodeConfigRows(rows)), rows);
       expect(decodeConfigRows(null), isNull);
       expect(decodeConfigRows('not json'), isNull);
+    });
+  });
+
+  group('paywall settings', () {
+    RemoteConfig read(Map<String, String> rows) => RemoteConfig.fromRows(rows);
+
+    test('no rows keeps the paywall as it was', () {
+      final RemoteConfig config = read(<String, String>{});
+      expect(config.videoAspectRatio, 1);
+      expect(config.paywallSubtitle, isEmpty);
+      expect(config.featureIcon(0), isEmpty);
+      expect(config.showStrikePrice, isTrue);
+      expect(config.accentColor, isNull);
+      expect(config.socialProofIcon, isEmpty);
+      expect(config.ctaText, 'Try Now');
+      expect(config.upiSelectText, 'Select UPI App');
+      expect(config.upiSheetTitle, 'Pay with UPI AutoPay');
+      expect(
+        config.autoPayStatement,
+        '₹3 today for the first 24 hours, then ₹299 every month by UPI '
+        'AutoPay. Cancel any time in your UPI app.',
+      );
+    });
+
+    test('reads the video shape in each form', () {
+      expect(read(<String, String>{'paywall_video_aspect_ratio': '9:16'})
+          .videoAspectRatio, 9 / 16);
+      expect(read(<String, String>{'paywall_video_aspect_ratio': ' 16 / 9 '})
+          .videoAspectRatio, 16 / 9);
+      expect(read(<String, String>{'paywall_video_aspect_ratio': '0.8'})
+          .videoAspectRatio, 0.8);
+    });
+
+    test('a nonsense video shape falls back to square', () {
+      for (final String bad in <String>['wide', '1:0', '0', '1:10', '10:1']) {
+        expect(
+          read(<String, String>{'paywall_video_aspect_ratio': bad})
+              .videoAspectRatio,
+          1,
+          reason: bad,
+        );
+      }
+    });
+
+    test('the backend words the AutoPay sentence, with the live prices', () {
+      final RemoteConfig config = read(<String, String>{
+        'cashfree_trial_amount': '5',
+        'cashfree_recurring_amount': '499',
+        'paywall_autopay_text': 'Pay {trial} now, then {recurring} a month.',
+      });
+      expect(config.autoPayStatement, 'Pay ₹5 now, then ₹499 a month.');
+    });
+
+    test('a blank AutoPay sentence falls back to the app\'s own', () {
+      expect(
+        read(<String, String>{'paywall_autopay_text': '  '}).autoPayStatement,
+        startsWith('₹3 today for the first 24 hours'),
+      );
+    });
+
+    test('feature icons are paired by position, blanks included', () {
+      final RemoteConfig config = read(<String, String>{
+        'paywall_feature_icons': 'lock||https://cdn.example.com/b.png',
+      });
+      expect(config.featureIcon(0), 'lock');
+      expect(config.featureIcon(1), isEmpty);
+      expect(config.featureIcon(2), 'https://cdn.example.com/b.png');
+      expect(config.featureIcon(3), isEmpty);
+    });
+
+    test('blank texts fall back; colours and switches are checked', () {
+      final RemoteConfig config = read(<String, String>{
+        'paywall_cta_text': ' ',
+        'paywall_upi_select_text': '',
+        'paywall_accent_color': 'gold',
+        'paywall_show_strike_price': 'maybe',
+      });
+      expect(config.ctaText, 'Try Now');
+      expect(config.upiSelectText, 'Select UPI App');
+      expect(config.accentColor, isNull);
+      expect(config.showStrikePrice, isTrue);
+      expect(
+        read(<String, String>{
+          'paywall_show_strike_price': 'false',
+          'paywall_accent_color': '#E11D48',
+        }).showStrikePrice,
+        isFalse,
+      );
+    });
+  });
+
+  group('previewCardSize', () {
+    test('full width at the backend shape', () {
+      expect(
+        previewCardSize(maxWidth: 312, maxHeight: 360, ratio: 1),
+        const Size(312, 312),
+      );
+    });
+
+    test('a tall shape is narrowed to fit the height, whole', () {
+      expect(
+        previewCardSize(maxWidth: 312, maxHeight: 320, ratio: 9 / 16),
+        const Size(180, 320),
+      );
     });
   });
 }

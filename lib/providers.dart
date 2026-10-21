@@ -296,15 +296,24 @@ class RemoteConfigController extends Notifier<RemoteConfig> {
     try {
       rows = await ref.read(evosBackendProvider).fetchConfig();
     } on BackendFailure {
+      _settle();
       return;
     }
+    if (!ref.mounted) return;
     // An empty answer is a table that was never filled in, not a request to
     // drop the saved settings.
-    if (!ref.mounted || rows.isEmpty) return;
-    unawaited(
-      ref.read(onboardingStoreProvider).saveConfig(encodeConfigRows(rows)),
-    );
-    state = RemoteConfig.fromRows(rows);
+    if (rows.isNotEmpty) {
+      unawaited(
+        ref.read(onboardingStoreProvider).saveConfig(encodeConfigRows(rows)),
+      );
+      state = RemoteConfig.fromRows(rows);
+    }
+    // After the new settings, so a screen waiting on this sees them.
+    _settle();
+  }
+
+  void _settle() {
+    if (ref.mounted) ref.read(remoteConfigSettledProvider.notifier).settle();
   }
 }
 
@@ -312,6 +321,24 @@ final NotifierProvider<RemoteConfigController, RemoteConfig>
     remoteConfigProvider =
     NotifierProvider<RemoteConfigController, RemoteConfig>(
   RemoteConfigController.new,
+);
+
+/// Whether [remoteConfigProvider] holds what the backend decided: saved by an
+/// earlier launch, or answered (or failed) on this one. Until then a fresh
+/// install shows the defaults, which have no login carousel, and the
+/// mobile-number screen waits rather than draw a layout the answer would
+/// rearrange.
+class RemoteConfigSettledController extends Notifier<bool> {
+  @override
+  bool build() => ref.watch(onboardingStoreProvider).loadConfig() != null;
+
+  void settle() => state = true;
+}
+
+final NotifierProvider<RemoteConfigSettledController, bool>
+    remoteConfigSettledProvider =
+    NotifierProvider<RemoteConfigSettledController, bool>(
+  RemoteConfigSettledController.new,
 );
 
 /// Decides which interface the app shows. `AppGate` renders from this state,

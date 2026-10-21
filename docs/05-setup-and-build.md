@@ -34,7 +34,7 @@ The app is configured in Dart, not through native config files.
 
 Things that are deliberately absent:
 
-- The `google-services` Gradle plugin is not applied. [android/app/google-services.json](../android/app/google-services.json) is in the repository but the build does not read it.
+- The `google-services` Gradle plugin is not applied. [android/app/google-services.json](../android/app/google-services.json) is in the repository but the build does not read it. It still describes the old package `com.spacewire.notes`; replace it once Firebase has the new one.
 - There is no `GoogleService-Info.plist` on iOS.
 - The FlutterFire CLI and the Firebase CLI are not installed.
 
@@ -50,7 +50,30 @@ keytool -list -v -alias androiddebugkey \
 
 If the fingerprint is missing, sign-in appears to be cancelled with no error. The app shows a hint banner for this case.
 
-Release builds are currently signed with the debug key ([android/app/build.gradle.kts](../android/app/build.gradle.kts)).
+Release builds are signed with the upload key; see [Release signing](#release-signing). Its SHA-1, and the Play app-signing key's SHA-1 once Play has one, must be added too, or sign-in fails in release and Play-installed builds.
+
+### Release signing
+
+Release builds (`flutter build appbundle` for Play, `flutter build apk`) are signed with the upload key, created 2026-10-21:
+
+| | |
+|---|---|
+| Keystore | `android/app/upload-keystore.jks` (PKCS12, RSA 4096, valid until 2054) |
+| Alias | `admin` |
+| Passwords | `android/key.properties` (one password, chosen by the owner, for store and key) |
+| Owner | `CN=Spacewire, O=Spacewire, L=India, C=IN` |
+| SHA-1 | `42:4C:E4:C7:14:C6:F8:DD:2B:E0:B3:B5:12:16:86:78:CC:C0:D7:60` |
+| SHA-256 | `C3:40:52:4B:EB:71:07:05:F5:4C:D7:BA:CD:0E:E9:B2:2A:6E:B5:4A:B0:4C:2B:61:4A:AF:69:10:89:83:87:10` |
+
+Both files are gitignored and exist only on this machine. **Back them up together somewhere safe** (a password manager). Every update to the Play listing must be signed with this key; with Play App Signing a lost upload key can be reset through Play support, but that takes days.
+
+[build.gradle.kts](../android/app/build.gradle.kts) reads `key.properties`. Without that file a release build is signed with the debug key and Gradle logs a warning; Play rejects such a bundle. To use the key on another machine, copy both files into the same places.
+
+Check which key signed a build:
+
+```sh
+"/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin/keytool" -printcert -jarfile build/app/outputs/bundle/release/app-release.aab | grep SHA1
+```
 
 ### Supabase
 
@@ -73,6 +96,26 @@ Mixpanel and the Facebook SDK stay off until their keys replace the placeholders
 To check the deep link on a connected phone, run `./tool/deeplink.sh --check`. It uses `notes://onboarding`, a link that only debug builds register.
 
 The real entry is a Play Store link with `referrer=flow%3Donboarding`, which works only for installs through Play. There is also a direct HTTPS link that needs a one-time device command. All three are in [09-deep-link-onboarding.md](09-deep-link-onboarding.md).
+
+## Website upload (Hostinger)
+
+The public website in `website/` is uploaded by hand to Hostinger, whose CDN sits in front (response header `server: hcdn`). It has not been uploaded yet.
+
+**After changing a CSS or JS file, change the `?v=` value in every page, because Hostinger's CDN keeps serving its cached copy otherwise. Purging in hPanel (Websites -> CDN -> Purge all) also works.** The CDN keeps one copy per compression method, and the Brotli copy that Chrome, Edge and Safari get can stay old after an upload, so pages arrive with stale styling. HTML pages are not cached. Every page loads `css/styles.css?v=20261019`; use today's date (`YYYYMMDD`), one value for the whole site. Replace it in all pages at once with `sed -i '' -E 's/\?v=[0-9]+"/?v=<new date>"/' website/*.html`. Never rename the files instead. The JavaScript is inline in each page, so there is no `.js` file to tag.
+
+`website/.htaccess` sends `www.` to the bare domain and shows `404.html` for missing pages. It has no HTTP-to-HTTPS rule on purpose: Hostinger forces HTTPS itself, and a second rule can loop. Its name starts with a dot, so Finder hides it: check it is in every upload. `404.html` has `<base href="/">`, so it is styled at any address on the server but unstyled when opened from disk.
+
+After an upload, check that the CDN serves the new files:
+
+```sh
+DOMAIN=example.com
+for f in index.html "css/styles.css?v=20261019"; do
+  curl -s -A "Mozilla/5.0 Chrome/141" -H "Accept-Encoding: gzip, deflate, br, zstd" -D - -o /dev/null "https://$DOMAIN/$f" \
+    | grep -iE '^(last-modified|x-hcdn-cache-status)' | tr '\n' ' '; echo " <- $f"
+done
+```
+
+Good: every `last-modified` date is the upload date. A file with an older date and `x-hcdn-cache-status: HIT` is a stale CDN copy: change the `?v=` value and upload the HTML again, or purge the CDN.
 
 ## Dependency rules
 
@@ -107,6 +150,10 @@ Then move the zip into the folder the wrapper created, next to the `.lck` file, 
 
 The same failure can return for a different Gradle version. Retrying, switching network, or repeating these steps all work.
 
+### App bundle: `Release app bundle failed to strip debug symbols from native libraries`
+
+Seen on 2026-10-21 with `flutter build appbundle`. **Cause:** Flutter checks the bundle with a tool from the Android SDK command-line tools, which are not installed (`flutter doctor` shows `cmdline-tools component is missing`). The `.aab` is still written and signed, but the command reports failure. **Fix:** Android Studio → Settings → Languages & Frameworks → Android SDK → SDK Tools → tick *Android SDK Command-line Tools (latest)* → Apply, then `flutter doctor --android-licenses`.
+
 ### Release build: `Dart snapshot generator failed with exit code -9`
 
 Seen on 2026-10-05 during `flutter build apk`, together with `Failed to find ".../android-x64-release/darwin-x64/gen_snapshot"`. Debug builds were unaffected because they do not use `gen_snapshot`.
@@ -137,7 +184,7 @@ The referrer only exists for installs made through Play. `adb install` and `flut
 
 ### The app is stuck in the onboarding interface
 
-That is by design once the link has been opened, in every build: no screen offers a way back. Clear the app's data (or `./tool/deeplink.sh --reset`): `adb shell pm clear com.spacewire.notes`.
+That is by design once the link has been opened, in every build: no screen offers a way back. Clear the app's data (or `./tool/deeplink.sh --reset`): `adb shell pm clear com.spacewire.evos`.
 
 ### Google asks for a lock screen during sign-in
 
@@ -158,7 +205,7 @@ Either the published Firestore rules differ from [firestore.rules](../firestore.
 
 ### Logcat errors that are expected
 
-While the Facebook keys are placeholders, each launch logs `GraphRequest can't be used when Facebook SDK isn't fully initialized` several times. That is the SDK refusing its own network calls because the app has kept it switched off. It stops once real keys are in.
+`GraphRequest can't be used when Facebook SDK isn't fully initialized`, about five times. With placeholder keys it appears on every launch: the SDK refuses its own network calls because the app keeps it switched off. With real keys it appears only on the first launch after install or after clearing data, before `MetaSdk.kt` switches the SDK on; that switch is saved, so later launches start it fully. Checked 2026-10-21: the same first launch then sent the install to Facebook.
 
 ### `flutter doctor` findings on the dev machine (2026-10-01)
 

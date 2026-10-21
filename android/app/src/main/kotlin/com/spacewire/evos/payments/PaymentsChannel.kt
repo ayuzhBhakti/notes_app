@@ -1,4 +1,4 @@
-package com.spacewire.notes.payments
+package com.spacewire.evos.payments
 
 import android.app.Activity
 import android.content.Intent
@@ -118,7 +118,7 @@ class PaymentsChannel private constructor(
     }
 
     companion object {
-        private const val CHANNEL = "com.spacewire.notes/payments"
+        private const val CHANNEL = "com.spacewire.evos/payments"
         private const val CANCELLED_CODE = "action_cancelled"
         private const val UPI_PROBE_URI = "upi://pay?pa=test@upi&pn=Test&am=1.00&cu=INR"
 

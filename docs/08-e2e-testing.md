@@ -6,9 +6,9 @@
 
 | Flow | Result |
 |------|--------|
-| `deeplink_local` | Passes |
-| `onboarding_deeplink` | Passes on a test-mode build (`--dart-define=SUPABASE_URL=`). On a normal build it stops, by design, before "Send code" |
-| `create_note`, `edit_note`, `delete_and_undo`, `empty_note_is_discarded` | Pass (2026-10-14), signed in with the phone's managed account `bablu@bhaktilok.app` |
+| `deeplink_local` | Passes (2026-10-19) |
+| `onboarding_deeplink` | Passes on a test-mode build (`--dart-define=SUPABASE_URL=`), last run 2026-10-19. On a normal build it stops, by design, before "Send code" |
+| `create_note`, `edit_note`, `delete_and_undo`, `empty_note_is_discarded` | Passed 2026-10-14 under the old id `com.spacewire.notes`. Blocked at Google sign-in on `com.spacewire.evos` until Firebase knows the new package ([07-known-issues.md](07-known-issues.md#app-id-change)) |
 | `profile_logout` | Not run. It signs the phone out |
 
 Expect to adjust selectors in the five notes flows the first time they get past sign-in.
@@ -42,7 +42,7 @@ The script turns Maestro's usage analytics off. Set `MAESTRO_CLI_NO_ANALYTICS=0`
 5. **Approve the link domain, once per device**, for `onboarding_deeplink`. `deeplink_local` does not need this. Until the domain hosts `assetlinks.json`, Android opens the link in a browser:
    ```sh
    ~/Library/Android/sdk/platform-tools/adb shell pm set-app-links-user-selection \
-     --user cur --package com.spacewire.notes true notes-f36b3.web.app
+     --user cur --package com.spacewire.evos true notes-f36b3.web.app
    ```
 
 ## Run
@@ -121,7 +121,7 @@ Tooltips are not used as selectors because Android 9 and later do not expose the
 
 ## Adding a flow
 
-1. Add `flows/<name>.yaml` with `appId: com.spacewire.notes`, a `name:` and a tag.
+1. Add `flows/<name>.yaml` with `appId: com.spacewire.evos`, a `name:` and a tag.
 2. Start with `- runFlow: ../subflows/ensure_signed_in.yaml`.
 3. If a control has no visible text, wrap it in `Semantics(identifier: 'snake_case_name')` and add it to the table above.
 4. Add the name to `flowsOrder` in [config.yaml](../.maestro/config.yaml), before `profile_logout`.

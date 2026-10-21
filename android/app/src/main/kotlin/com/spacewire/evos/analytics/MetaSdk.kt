@@ -1,11 +1,12 @@
-package com.spacewire.notes.analytics
+package com.spacewire.evos.analytics
 
 import android.app.Application
 import android.content.Context
 import android.util.Log
 import com.facebook.FacebookSdk
+import com.facebook.LoggingBehavior
 import com.facebook.appevents.AppEventsLogger
-import com.spacewire.notes.R
+import com.spacewire.evos.R
 
 object MetaSdk {
 
@@ -27,6 +28,13 @@ object MetaSdk {
         // AndroidManifest.xml switches off the SDK's start-up initialisation and automatic events,
         // so that a build still carrying the placeholder keys never contacts Facebook. With real
         // keys, both are switched back on here.
+        if (MixpanelSdk.isDebuggable(application)) {
+            // Shows each request to Facebook and each App Events flush in logcat, as Mixpanel's
+            // logging does, so a debug build can be checked without Events Manager.
+            FacebookSdk.setIsDebugEnabled(true)
+            FacebookSdk.addLoggingBehavior(LoggingBehavior.APP_EVENTS)
+            FacebookSdk.addLoggingBehavior(LoggingBehavior.REQUESTS)
+        }
         FacebookSdk.setAutoInitEnabled(true)
         FacebookSdk.setAutoLogAppEventsEnabled(true)
         FacebookSdk.fullyInitialize()
