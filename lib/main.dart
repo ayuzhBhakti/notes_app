@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -37,14 +38,30 @@ Future<void> main() async {
     await AuthService.initializeGoogleSignIn();
     onboardingStore = await OnboardingStore.open();
 
-    // First launch only: the referrer cannot change after install. Awaited
-    // so the very first frame is already the right interface; a failed read
-    // is left unmarked and tried again on the next launch.
+    // Until Play has given an answer that settles it (see isReferrerFinal).
+    // Awaited so the very first frame is already the right interface; a
+    // failed read is left unmarked and tried again on the next launch.
     if (!onboardingStore.installReferrerChecked) {
-      installReferrer = await const InstallReferrerService().fetch();
-      if (installReferrer != null) {
-        await onboardingStore.markInstallReferrerChecked();
-        analytics.installAttributed(InstallSource.parse(installReferrer));
+      final InstallReferrer? answer =
+          await const InstallReferrerService().fetch();
+      if (answer != null) {
+        final int attempt = onboardingStore.installReferrerAttempts + 1;
+        if (isReferrerFinal(answer.referrer, attempt)) {
+          await onboardingStore.markInstallReferrerChecked();
+        } else {
+          await onboardingStore.saveInstallReferrerAttempts(attempt);
+        }
+        analytics.installAttributed(
+          InstallSource.parse(answer.referrer),
+          referrer: answer.referrer,
+          clickRecorded: answer.clickSeconds > 0,
+          attempt: attempt,
+        );
+        // A referrer that arrives on a later launch must not pull someone
+        // who has since signed in to their notes into onboarding.
+        if (attempt == 1 || !AuthService(FirebaseAuth.instance).isSignedIn) {
+          installReferrer = answer.referrer;
+        }
       }
     }
   } catch (error) {

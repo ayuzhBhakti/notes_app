@@ -45,7 +45,16 @@ class MainActivity : FlutterActivity() {
                     replied = true
                     if (responseCode == InstallReferrerClient.InstallReferrerResponse.OK) {
                         try {
-                            result.success(client.installReferrer.installReferrer)
+                            val details = client.installReferrer
+                            // The timestamps tell "Play saw no link click" (0)
+                            // apart from "Play saw one but sent no referrer".
+                            result.success(
+                                mapOf(
+                                    "referrer" to (details.installReferrer ?: ""),
+                                    "clickSeconds" to details.referrerClickTimestampSeconds,
+                                    "installBeginSeconds" to details.installBeginTimestampSeconds,
+                                ),
+                            )
                         } catch (e: Exception) {
                             result.error("unavailable", e.message, null)
                         }

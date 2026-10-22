@@ -17,6 +17,39 @@ One entry per completed task, newest first. Keep entries short: what changed, wh
 
 ---
 
+## 2026-10-22 — Play release notes for 1.0.1+2
+
+**Request:** what the release notes for the new release should say.
+**Changes:** none in the repo; the text was given in chat.
+**Why:** the only change since 1.0.0+1 is the install-referrer retry and its analytics, which users cannot see, so the notes are a generic "stability and reliability" line. They name the notes app only, like the listing and the website.
+**Verified:** under Play's 500-character limit. Not checked in Play Console.
+**Docs updated:** this log only.
+**Follow-ups:** none.
+
+---
+
+## 2026-10-22 — Play referrer: report Play's raw answer, retry an empty one
+
+**Request:** option 1 after the failed Play referrer test: an update that shows what Play sends, and works if Play sends it late.
+**Changes:** `MainActivity.kt` returns the referrer with Play's click and install-begin timestamps. `install_referrer_service.dart`: `InstallReferrer`, `isReferrerFinal` (an empty answer is retried, up to `kReferrerMaxAttempts` = 5 launches), and `isOnboardingReferrer` accepts an encoded `flow%3Donboarding`. `OnboardingStore` counts attempts (`install_referrer_attempts`). `main.dart` applies a referrer from a later launch only when no notes user is signed in (`AuthService.isSignedIn`, new). `Analytics.installAttributed` adds `install_referrer_raw`, `referrer_click_recorded`, `referrer_attempt`. `pubspec.yaml` version 1.0.1+2.
+**Why:** Mixpanel showed `install_source: unknown`, meaning Play's answer had no `utm_source` and no `flow`, most likely empty. Whether Play fills it in later, and what it sends, cannot be seen without a Play build: Play re-signs the app, so no local build can read a Play install's referrer.
+**Verified:** `flutter analyze` clean; 129 tests pass (4 new). Debug build on the test phone: `Install Attributed` carried `install_referrer_raw: utm_source=google-play&utm_medium=organic`, `referrer_click_recorded: false`, `referrer_attempt: 1` (adb install, so organic is expected). `flutter build appbundle` wrote a signed `app-release.aab`. The retry and the late-referrer path are covered by unit tests of `isReferrerFinal` only; they cannot run without Play. Not verified that Play passes the referrer at all.
+**Docs updated:** `docs/10-analytics.md`, `docs/09-deep-link-onboarding.md`, `docs/ai/AGENT_CONTEXT.md`.
+**Follow-ups:** owner uploads 1.0.1+2. Then test with a phone signed in to a personal @gmail.com account only (the test phone's only account is a Workspace account on `bhaktilok.app`, which one report says makes Play reset the referrer), and read `install_referrer_raw` and `referrer_click_recorded` in Mixpanel.
+
+---
+
+## 2026-10-22 — Tested the Play Store referrer link on the live build: fails
+
+**Request:** the app is live on Play; give the onboarding Play link and test it on the connected phone.
+**Changes:** none kept. A temporary log of the referrer value in `main.dart` and `install_referrer_service.dart` was added for a probe build and reverted.
+**Verified:** on the test phone (SM-M127G), four fresh Play installs (`installerPackageName=com.android.vending`, no backup restored), each opened first through `https://play.google.com/store/apps/details?id=com.spacewire.evos&referrer=flow%3Donboarding` (from Gmail by the owner, then by `adb shell am start` into Play, and once with `referrer=flow=onboarding` unencoded), all opened the notes sign-in screen. `InstallReferrerClient` verbose log: the service connected and answered within ~200 ms (three callers: the app plus, probably, the Facebook and Mixpanel SDKs), so this is not the 3 s timeout or R8. The Play APK pulled from the phone contains the referrer channel, `flow`, `install_referrer_checked` and the onboarding screens. A release probe build installed by adb read `utm_source=google-play&utm_medium=organic` in 51 ms. Play re-signs the app, so the probe could not be put over a Play install to read Play's actual answer there.
+**Docs updated:** `docs/ai/AGENT_CONTEXT.md`, `docs/07-known-issues.md`, `docs/09-deep-link-onboarding.md`.
+**Mixpanel:** the owner's "Install Attributed" for the 12:56 IST install shows `install_source: unknown`, `install_medium: organic`: Play handed over a referrer with no `utm_source` and no `flow` (most likely an empty string), not its organic default and not `flow=onboarding`.
+**Follow-ups:** owner to choose a next step (diagnostic update to Play, web link route, or an attribution service). Not tried: a different Google account or phone, a link from a web page in Chrome.
+
+---
+
 ## 2026-10-21 — Verified the real Mixpanel and Facebook keys
 
 **Request:** the owner put real keys in `analytics_keys.xml`; check that everything works.

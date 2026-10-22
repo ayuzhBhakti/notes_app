@@ -75,6 +75,32 @@ void main() {
 
     test('survives malformed percent encoding', () {
       expect(isOnboardingReferrer('flow=%E0%A4%A'), isFalse);
+      expect(isOnboardingReferrer('flow%3D%E0%A4%A'), isFalse);
+    });
+
+    test('accepts the marker handed over still encoded', () {
+      expect(isOnboardingReferrer('flow%3Donboarding'), isTrue);
+      expect(
+        isOnboardingReferrer('utm_source%3Dmail%26flow%3Donboarding'),
+        isTrue,
+      );
+      expect(isOnboardingReferrer('flow%3Dother'), isFalse);
+    });
+  });
+
+  group('isReferrerFinal', () {
+    test('any answer with content settles it at once', () {
+      expect(isReferrerFinal('flow=onboarding', 1), isTrue);
+      expect(isReferrerFinal('utm_source=google-play&utm_medium=organic', 1),
+          isTrue);
+    });
+
+    test('an empty answer is asked for again until the last attempt', () {
+      for (int attempt = 1; attempt < kReferrerMaxAttempts; attempt++) {
+        expect(isReferrerFinal('', attempt), isFalse);
+        expect(isReferrerFinal('  ', attempt), isFalse);
+      }
+      expect(isReferrerFinal('', kReferrerMaxAttempts), isTrue);
     });
   });
 

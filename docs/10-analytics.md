@@ -82,7 +82,7 @@ There are 29.
 
 | Event | When it fires | Properties |
 |-------|---------------|------------|
-| `Install Attributed` | Once per install, on the first launch where Google Play answers where the install came from | The `install_` properties above |
+| `Install Attributed` | On the first launch where Google Play answers where the install came from. An empty answer is asked for again on up to 5 launches, and each asks sends the event again | The `install_` properties above. `install_referrer_raw`: Play's referrer exactly as received, cut to 100 characters (link parameters only). `referrer_click_recorded`: `false` when Play recorded no tap on a link. `referrer_attempt`: which launch asked, from 1 |
 | `Deep Link Opened` | An onboarding link reached the app: at launch, while running, or as the Play Store link the app was installed from | `target`: `onboarding`. `after_install`: `true` for the Play Store link. `started_onboarding`: `false` when the device was already in the flow, so the link changed nothing |
 | `App Opened` | Every launch, before the first screen | none |
 
@@ -191,7 +191,7 @@ Notes, for a new user:
 
 - iOS sends nothing.
 - Debug builds will report to the same Mixpanel project and Facebook app as released builds, so test runs will be mixed in with real users. In test mode (a debug build with no Supabase project) `OTP Verified` fires for the stand-in account `debug-user`, which every such phone then shares in Mixpanel.
-- If Google Play cannot answer on the first launch, the app asks again on each later launch with no limit, and `Install Attributed` is sent whenever it first answers. A phone with no Play Store never sends it and never gets the `install_` properties.
+- If Google Play cannot answer on the first launch, the app asks again on each later launch with no limit, and `Install Attributed` is sent whenever it first answers. If Play answers with an empty referrer, the app asks again on up to 5 launches in all, sending `Install Attributed` each time. A phone with no Play Store never sends it and never gets the `install_` properties.
 - An install that happened before the Mixpanel token was set keeps its `install_` properties (they are stored on the phone), but its `Install Attributed` event is lost.
 - Screen-view events fire when the screen is created. `Maintenance Viewed` therefore fires on every launch of a subscribed phone, and `Sign In Viewed` on every launch of a signed-out one. Count unique users, not totals.
 - There is no event for a mobile number that fails validation, none for an error on the notes list, and none when a subscription lapses and the person is returned to the paywall.

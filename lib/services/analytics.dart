@@ -67,12 +67,30 @@ class Analytics {
 
   /// Once per install, when Google Play has said where it came from. Also
   /// puts the source on every later event and on the person's profile.
-  void installAttributed(InstallSource source) {
+  ///
+  /// [referrer] is Play's answer exactly as received, cut to 100 characters:
+  /// link parameters only, and the one way to see what Play really sent.
+  /// [clickRecorded] is false when Play recorded no tap on a link. [attempt]
+  /// counts the launches that have asked, from 1; an empty answer is asked
+  /// for again, so one install can send this more than once.
+  void installAttributed(
+    InstallSource source, {
+    required String referrer,
+    required bool clickRecorded,
+    required int attempt,
+  }) {
     final Map<String, Object> properties = source.toProperties();
     _client.send('setInstallSource', <String, Object?>{
       'properties': properties,
     });
-    _track('Install Attributed', properties);
+    _track('Install Attributed', <String, Object>{
+      ...properties,
+      'install_referrer_raw': referrer.length > 100
+          ? referrer.substring(0, 100)
+          : referrer,
+      'referrer_click_recorded': clickRecorded,
+      'referrer_attempt': attempt,
+    });
   }
 
   /// An onboarding link reached the app. [afterInstall]: it was a Play Store

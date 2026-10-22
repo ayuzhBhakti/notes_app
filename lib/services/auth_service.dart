@@ -44,6 +44,9 @@ class AuthService {
 
   Stream<User?> authStateChanges() => _auth.authStateChanges();
 
+  /// Synchronous, for `main()` before there is a provider to watch.
+  bool get isSignedIn => _auth.currentUser != null;
+
   /// Returns true when this sign-in created the account.
   Future<bool> signInWithGoogle() async {
     final GoogleSignIn google = GoogleSignIn.instance;

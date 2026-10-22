@@ -245,7 +245,10 @@ A Play Store link can carry a `referrer` parameter. Play keeps it through the in
 
 - **No plugin.** [MainActivity.kt](../android/app/src/main/kotlin/com/spacewire/evos/MainActivity.kt) exposes Google's Install Referrer library on the channel `com.spacewire.evos/install_referrer`.
 - **Read in `main()`, before `runApp`,** with a 3-second limit, so the first frame is already the right interface.
-- **Read once.** A successful read sets `install_referrer_checked` on the device. A failed read (no Play Store, timeout) is left unset and tried again on the next launch.
+- **Read until settled.** An answer with any content sets `install_referrer_checked` on the device. An empty answer (seen on every Play install on 2026-10-22) is counted in `install_referrer_attempts` and asked for again on the next launch, up to 5 launches. A failed read (no Play Store, timeout) is not counted and is tried again on the next launch.
+- **A late referrer respects notes.** If `flow=onboarding` arrives on a launch after the first, it starts onboarding only when nobody is signed in to the notes app.
+- **Encoded or not.** `flow%3Donboarding`, a referrer handed over still encoded, is accepted too.
+- **Reported.** `Install Attributed` carries Play's raw answer and whether Play recorded a link tap, so Mixpanel shows what Play actually sent ([10-analytics.md](10-analytics.md)).
 - **Android only.** On iOS the read returns nothing, and there is no equivalent App Store mechanism.
 
 An install that did not come from a link returns Play's default, `utm_source=google-play&utm_medium=organic`, which does not start onboarding.
@@ -276,7 +279,7 @@ Three keys in `shared_preferences`:
 - A missing, corrupt or unrecognised stage decodes to "inactive", so bad data can never lock a user out of the notes app.
 - A stage saved by the earlier build (`details`, `member`) decodes to `signIn`: that device is still in the flow but has no account.
 - A stage past sign-in with no session on the device is shown as sign-in.
-- The mobile number and the code are never stored. Clearing the app's data removes all three keys, and `install_referrer_checked`.
+- The mobile number and the code are never stored. Clearing the app's data removes all three keys, and `install_referrer_checked` and `install_referrer_attempts`.
 - Each step is reported to analytics, without the number or the code. The events are in [10-analytics.md](10-analytics.md#onboarding).
 
 ## Setting up the backend
@@ -370,7 +373,7 @@ Not configured. The Play Store route does not exist there, an iOS link would nee
 - **The three Cashfree functions.** Deployed, which means they bundled, but none has handled a real request. `sms-hook` has.
 - **A real payment.** `CashfreePaymentGateway` and `PaymentsChannel.kt` compile and the app builds with the SDK, but the Cashfree sheet has never been opened from this app, in sandbox or production. That `action_cancelled` is the SDK's code for a user cancel was read from the SDK's classes, not observed.
 - **A backend-supplied logo, preview picture, preview video or carousel image.** Only the letter tile has been seen on a device. The carousel is covered by widget tests (slides, auto-advance, swipe, keyboard, slow first launch), and was seen on the test phone from a fresh install on 2026-10-21 with the backend's placeholder images. The video's failure path is covered by a widget test; playback is not.
-- **A real install through a Play Store referrer link.**
+- **A real install through a Play Store referrer link.** Tried on 2026-10-22 on the live build and it opened the notes app every time; see [07-known-issues.md](07-known-issues.md#deep-link-onboarding).
 
 ## Open items
 

@@ -53,4 +53,13 @@ class OnboardingStore {
 
   Future<void> markInstallReferrerChecked() =>
       _prefs.setBool(_referrerCheckedKey, true);
+
+  static const String _referrerAttemptsKey = 'install_referrer_attempts';
+
+  /// Launches that have asked Play and got an empty referrer. See
+  /// `isReferrerFinal`.
+  int get installReferrerAttempts => _prefs.getInt(_referrerAttemptsKey) ?? 0;
+
+  Future<void> saveInstallReferrerAttempts(int attempts) =>
+      _prefs.setInt(_referrerAttemptsKey, attempts);
 }

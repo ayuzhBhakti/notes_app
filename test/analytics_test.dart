@@ -140,11 +140,36 @@ void main() {
 
     test('an install source is stored and reported', () {
       final Recorder recorder = Recorder();
-      Analytics(recorder)
-          .installAttributed(InstallSource.parse('utm_source=mail'));
+      Analytics(recorder).installAttributed(
+        InstallSource.parse('utm_source=mail'),
+        referrer: 'utm_source=mail',
+        clickRecorded: true,
+        attempt: 1,
+      );
       expect(recorder.otherMethods, <String>['setInstallSource']);
-      expect(recorder.properties('Install Attributed')['install_source'],
-          'mail');
+      final Map<String, Object?> properties =
+          recorder.properties('Install Attributed');
+      expect(properties['install_source'], 'mail');
+      expect(properties['install_referrer_raw'], 'utm_source=mail');
+      expect(properties['referrer_click_recorded'], true);
+      expect(properties['referrer_attempt'], 1);
+    });
+
+    test('the raw referrer is cut to 100 characters', () {
+      final Recorder recorder = Recorder();
+      final String long = 'utm_source=${'x' * 300}';
+      Analytics(recorder).installAttributed(
+        InstallSource.parse(long),
+        referrer: long,
+        clickRecorded: false,
+        attempt: 2,
+      );
+      expect(
+        (recorder.properties('Install Attributed')['install_referrer_raw']!
+                as String)
+            .length,
+        100,
+      );
     });
   });
 

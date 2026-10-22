@@ -2,7 +2,7 @@
 
 Condensed, current facts about this project for AI coding agents. The full docs are in [docs/](../README.md); read the relevant one before a non-trivial change.
 
-Last verified against the code: 2026-10-21.
+Last verified against the code: 2026-10-22.
 
 ## What this is
 
@@ -20,7 +20,7 @@ Both interfaces report to Mixpanel and the Facebook SDK, on Android only. Every 
 ```sh
 flutter pub get
 flutter analyze            # must report no issues
-flutter test               # 125 tests, all must pass
+flutter test               # 129 tests, all must pass
 flutter build apk --debug  # verified working 2026-10-13
 flutter build apk          # release, signed with the upload key, verified 2026-10-21
 flutter build appbundle    # for Play; writes a signed .aab but exits with an error until cmdline-tools are installed
@@ -114,12 +114,12 @@ Explicit types on everything, `const` where possible, relative imports in `lib/`
 
 ## Current state
 
-- 125 of 125 tests passing (2026-10-21). `flutter analyze` reports no issues. Debug and release APKs build as `com.spacewire.evos` (2026-10-19). The release APK was installed and run on the test phone on 2026-10-14: it opened from the HTTPS link, kept its phone sign-in across a force-stop, and showed the paywall.
+- 129 of 129 tests passing (2026-10-22). Version `1.0.1+2` built as a signed `.aab` on 2026-10-22 for Play, not yet uploaded. `flutter analyze` reports no issues. Debug and release APKs build as `com.spacewire.evos` (2026-10-19). The release APK was installed and run on the test phone on 2026-10-14: it opened from the HTTPS link, kept its phone sign-in across a force-stop, and showed the paywall.
 - **Onboarding sign-in works against the live backend; payment does not yet.** Supabase project `sqvlgiqypqvjykczuhgz` is the default in `lib/supabase_options.dart`. On 2026-10-13 a real SMS code was sent and verified from the test phone and the paywall shown. The Cashfree rows of `app_config` and `customer_email_domain` are empty and no Cashfree function has handled a request, so do not report payment as working. `supabase db push` and `functions deploy` were allowed by the permission system; `config push` (auth settings) was refused. The Supabase CLI is at `~/.local/bin/supabase` (not on the PATH); listing another project's secrets was refused too. Never edit an applied migration: add a new timestamped file. Deno is not installed. Do not report sign-in, settings, or payment as working against a server.
 - **Only test mode has run end to end.** A debug build made with `--dart-define=SUPABASE_URL=` (empty) accepts any number with the code `123456` and simulates the payment. A normal build talks to the real project and sends a real SMS. The Cashfree sheet has never been opened from this app.
 - **Never run `onboarding_deeplink` or type a made-up number into a normal build:** it would text a real stranger. Use a test-mode build, or a number the user owns.
 - **Analytics has real keys since 2026-10-21** (Facebook app "evos", `2015134735846694`). On a test-mode debug build, Mixpanel and Facebook accepted every onboarding event, `identify`, the reset, the install and app open (logcat: `status: 1` and `success: true`). Nobody has looked inside the Mixpanel or Events Manager dashboards yet. Not run: the sign-in and notes events (Google sign-in is broken), `metaCompleteRegistration` (needs a new user), and a real purchase. Debug builds report to the same project and app as release.
-- **The Play Store referrer path has never run through Play.** It needs a build on a Play testing track. Do not report it as verified.
+- **The Play Store referrer link does not work on the live build (tested 2026-10-22).** Four fresh Play installs through `...&referrer=flow%3Donboarding` on the test phone all opened the notes app. The app read a referrer successfully and fast, and the Play build contains the code, so Play is not handing over `flow=onboarding`. Mixpanel showed Play's answer was empty. The phone's only Google account is a Workspace (managed) account, which one report blames. Version 1.0.1+2 retries an empty referrer on up to 5 launches and reports Play's raw answer in `Install Attributed`. Cause not found yet; see the 2026-10-22 entries in [TASK_LOG.md](TASK_LOG.md). Do not report it as working.
 - Maestro 2.11.0 is installed in `~/.maestro`. `onboarding_deeplink` passed on the test phone on 2026-10-19 (test-mode build). `deeplink_local` passed on 2026-10-19 too. Maestro's on-device driver, which had stopped starting (`DeviceServerDiedException`), worked again on 2026-10-14. **Google sign-in is broken since the app id became `com.spacewire.evos` (2026-10-19)** until the owner registers that package with the debug SHA-1 in Firebase and the new Android `appId` goes into `firebase_options.dart` (the old one, `...:android:54dd28f91a2c80dce700e4`, belongs to `com.spacewire.notes`). Under the old id the notes flows `create_note`, `edit_note`, `delete_and_undo` and `empty_note_is_discarded` passed on 2026-10-14; `profile_logout` has never run. Do not report the notes flows as passing on the new id.
 - **The test phone remembers the onboarding stage.** After any onboarding test, a plain launch opens "Welcome to Evos". Run `./tool/deeplink.sh --reset` before the notes flows.
 - What is behind the paywall is not built (subscribers see the maintenance screen), and iOS has no way in. Open items are in [07-known-issues.md](../07-known-issues.md#deep-link-onboarding). Ask before guessing.
