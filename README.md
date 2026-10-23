@@ -1,6 +1,6 @@
-# Notes
+# Evos
 
-A Flutter note-taking app. Sign in with Google, keep private text notes that sync through Cloud Firestore and work offline.
+A Flutter subscription app. Sign in with a mobile number and SMS code (Supabase), subscribe through Cashfree UPI AutoPay, then use a web page inside the app. It began as a notes app; the notes code is still here but unreachable.
 
 ## Quick start
 
@@ -9,7 +9,7 @@ flutter pub get
 flutter run
 ```
 
-Google sign-in on Android needs your machine's debug SHA-1 registered in the Firebase project. See [docs/05-setup-and-build.md](docs/05-setup-and-build.md#android-signing-certificate).
+`flutter run` talks to the real backend and sends real SMS. For test mode (no SMS, code 123456, simulated payment) use `flutter run --dart-define=SUPABASE_URL=`. See [docs/09-deep-link-onboarding.md](docs/09-deep-link-onboarding.md).
 
 ## Documentation
 
@@ -23,7 +23,8 @@ Everything is in [docs/](docs/README.md):
 - [Conventions](docs/06-conventions.md)
 - [Known issues](docs/07-known-issues.md)
 - [End-to-end testing](docs/08-e2e-testing.md)
-- [Deep-link onboarding](docs/09-deep-link-onboarding.md)
+- [Phone sign-in, paywall and web page](docs/09-deep-link-onboarding.md)
+- [Analytics](docs/10-analytics.md)
 - [AI agent context](docs/ai/AGENT_CONTEXT.md) and [task log](docs/ai/TASK_LOG.md)
 
 Docs are updated in the same change as the code they describe.

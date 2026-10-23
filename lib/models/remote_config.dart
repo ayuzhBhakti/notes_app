@@ -12,7 +12,7 @@ class LoginSlide {
 }
 
 /// What the backend decides about the deep-link interface: its name, logo and
-/// colour, the paywall's words and prices, and the maintenance message.
+/// colour, the paywall's words and prices, and the web page subscribers see.
 ///
 /// Built from the public rows of the `app_config` table. Every field has a
 /// default, so a missing row, a blank value or no network at all still gives
@@ -46,10 +46,7 @@ class RemoteConfig {
     this.upiSelectText = 'Select UPI App',
     this.upiSheetTitle = 'Pay with UPI AutoPay',
     this.loginSlides = const <LoginSlide>[],
-    this.maintenanceTitle = "We're under maintenance",
-    this.maintenanceMessage =
-        "Your subscription is active. We'll be back soon, and there is "
-        'nothing more you need to do.',
+    this.webUrl,
     this.planId = '',
     this.planName = 'Evos Premium Monthly',
     this.trialAmount = 3,
@@ -123,8 +120,9 @@ class RemoteConfig {
   /// screen. Empty hides it.
   final List<LoginSlide> loginSlides;
 
-  final String maintenanceTitle;
-  final String maintenanceMessage;
+  /// The page a subscriber lands on, from the `webview_url` row. https only.
+  /// Null shows a "come back soon" screen in its place.
+  final String? webUrl;
 
   /// The Cashfree plan. Blank when the server describes the plan inline.
   /// The server reads its own copy when charging; this one is for analytics.
@@ -275,8 +273,7 @@ class RemoteConfig {
       upiSelectText: text('paywall_upi_select_text', d.upiSelectText),
       upiSheetTitle: text('paywall_upi_sheet_title', d.upiSheetTitle),
       loginSlides: slides(),
-      maintenanceTitle: text('maintenance_title', d.maintenanceTitle),
-      maintenanceMessage: text('maintenance_message', d.maintenanceMessage),
+      webUrl: url('webview_url'),
       planId: optional('cashfree_plan_id', d.planId),
       planName: text('plan_name', '$appName Premium Monthly'),
       trialAmount: amount('cashfree_trial_amount', d.trialAmount),

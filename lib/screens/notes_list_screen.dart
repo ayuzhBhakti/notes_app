@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -11,7 +10,6 @@ import '../theme.dart';
 import '../utils/errors.dart';
 import '../widgets/note_tile.dart';
 import '../widgets/track_view.dart';
-import '../widgets/user_avatar.dart';
 import 'note_editor_screen.dart';
 import 'profile_screen.dart';
 
@@ -20,8 +18,7 @@ class NotesListScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final AsyncValue<List<Note>> notes = ref.watch(notesStreamProvider);
-    final User? user = ref.watch(currentUserProvider);
+    final AsyncValue<List<Note>> notes = ref.watch(localNotesStreamProvider);
 
     return TrackView(
       onView: (Analytics analytics) => analytics.notesListViewed(),
@@ -52,9 +49,7 @@ class NotesListScreen extends ConsumerWidget {
                   identifier: 'notes_profile_button',
                   child: IconButton(
                     tooltip: 'Profile',
-                    icon: user == null
-                        ? const Icon(Icons.account_circle_outlined)
-                        : UserAvatar(user: user, radius: 17),
+                    icon: const Icon(Icons.account_circle_outlined),
                     onPressed: () => Navigator.of(context).push(
                       MaterialPageRoute<void>(
                         builder: (_) => const ProfileScreen(),
@@ -80,7 +75,7 @@ class NotesListScreen extends ConsumerWidget {
                   hasScrollBody: false,
                   child: _ErrorView(
                     failure: describeError(error),
-                    onRetry: () => ref.invalidate(notesStreamProvider),
+                    onRetry: () => ref.invalidate(localNotesStreamProvider),
                   ),
                 ),
               ],
@@ -160,7 +155,7 @@ class NotesListScreen extends ConsumerWidget {
   void _deleteWithUndo(BuildContext context, WidgetRef ref, Note note) {
     // Captured before any async gap: `context` may be defunct afterwards.
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
-    final NoteActions actions = ref.read(noteActionsProvider.notifier);
+    final LocalNoteActions actions = ref.read(localNoteActionsProvider.notifier);
 
     // Not awaited. Firestore commits to the local cache immediately, so the row
     // disappears within a frame, but the returned future does not complete
@@ -175,7 +170,7 @@ class NotesListScreen extends ConsumerWidget {
             SnackBar(
               content: Text(
                 describeError(
-                  ref.read(noteActionsProvider).error ?? 'Delete failed',
+                  ref.read(localNoteActionsProvider).error ?? 'Delete failed',
                 ).message,
               ),
             ),

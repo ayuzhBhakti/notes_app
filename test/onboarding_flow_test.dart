@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:evos/models/onboarding.dart';
+import 'package:evos/models/review_account.dart';
 import 'package:evos/services/deep_link_service.dart';
 import 'package:evos/services/evos_backend.dart';
 import 'package:evos/services/payment_gateway.dart';
@@ -8,10 +9,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/harness.dart';
 
-const String _notesApp = 'Continue with Google';
+const String _googleSignIn = 'Continue with Google';
 const String _phoneScreen = 'Welcome to Evos';
 const String _codeScreen = 'Enter the code';
-const String _maintenance = "We're under maintenance";
+const String _noPage = "You're all set";
+final Finder _webScreen = find.bySemanticsIdentifier('web_screen');
 
 /// What a device holds after signing in and reaching [stage].
 Map<String, Object> _saved(OnboardingStage stage, {bool signedIn = true}) =>
@@ -20,82 +22,195 @@ Map<String, Object> _saved(OnboardingStage stage, {bool signedIn = true}) =>
       if (signedIn) 'evos_session_v1': 'fake-session',
     };
 
-Future<OnboardingStage> _savedStage() async {
+Future<OnboardingState> _savedState() async {
   final SharedPreferences prefs = await SharedPreferences.getInstance();
-  return OnboardingState.decode(prefs.getString('onboarding_v1')).stage;
+  return OnboardingState.decode(prefs.getString('onboarding_v1'));
 }
+
+Future<OnboardingStage> _savedStage() async => (await _savedState()).stage;
+
+/// Log out is in the web screen's menu.
+Future<void> _logOut(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('More'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Log out'));
+  await tester.pumpAndSettle();
+}
+
+/// The review account's notes screen: log out lives on the Profile screen.
+Future<void> _logOutNotes(WidgetTester tester) async {
+  await tester.tap(find.bySemanticsIdentifier('notes_profile_button'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.widgetWithText(OutlinedButton, 'Log out'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.widgetWithText(FilledButton, 'Log out'));
+  await tester.pumpAndSettle();
+}
+
+/// The notes list the review account lands on.
+final Finder _notesScreen = find.text('Notes');
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
 
-  group('which interface', () {
-    testWidgets('an ordinary launch shows the normal app', (tester) async {
+  group('start', () {
+    testWidgets('an ordinary launch shows the mobile-number screen',
+        (tester) async {
       await launch(tester);
 
-      expect(find.text(_notesApp), findsOneWidget);
-      expect(find.text(_phoneScreen), findsNothing);
+      expect(find.text(_phoneScreen), findsOneWidget);
+      expect(find.text(_googleSignIn), findsNothing);
     });
 
-    testWidgets('a cold-start onboarding link shows the mobile-number screen',
+    testWidgets('a cold-start onboarding link is reported and changes nothing',
         (tester) async {
-      await launch(tester, coldStartLink: onboardingLink);
+      final Harness h = await launch(tester, coldStartLink: onboardingLink);
 
       expect(find.text(_phoneScreen), findsOneWidget);
-      expect(find.text(_notesApp), findsNothing);
+      expect(h.recorder.properties('Deep Link Opened')['after_install'], false);
       // The link must not have been pushed as a named route.
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('the local test link at cold start shows the mobile-number screen',
+    testWidgets('a link opened while running keeps the screen',
         (tester) async {
-      await launch(tester, coldStartLink: 'notes://onboarding');
-      expect(find.text(_phoneScreen), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('a link opened while running switches interface',
-        (tester) async {
-      await launch(tester);
-      expect(find.text(_notesApp), findsOneWidget);
+      final Harness h = await launch(tester);
+      await sendCode(tester);
 
       await openLinkWhileRunning(tester, 'notes://onboarding');
 
-      expect(find.text(_phoneScreen), findsOneWidget);
+      expect(find.text(_codeScreen), findsOneWidget);
+      expect(h.recorder.events, contains('Deep Link Opened'));
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('a link to anywhere else shows the normal app', (tester) async {
-      await launch(tester, coldStartLink: 'https://$kDeepLinkHost/other');
-      expect(find.text(_notesApp), findsOneWidget);
-
-      await openLinkWhileRunning(tester, 'https://$kDeepLinkHost/other');
-      expect(find.text(_notesApp), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('an install from a Play Store onboarding link signs in',
-        (tester) async {
-      await launch(tester, installReferrer: 'utm_source=mail&flow=onboarding');
-
-      expect(find.text(_phoneScreen), findsOneWidget);
-      expect(find.text(_notesApp), findsNothing);
-    });
-
-    testWidgets('an install from any other Play Store link is the normal app',
-        (tester) async {
-      await launch(
+    testWidgets('a link to anywhere else is not reported', (tester) async {
+      final Harness h = await launch(
         tester,
-        installReferrer: 'utm_source=google-play&utm_medium=organic',
+        coldStartLink: 'https://$kDeepLinkHost/other',
       );
 
-      expect(find.text(_notesApp), findsOneWidget);
+      expect(find.text(_phoneScreen), findsOneWidget);
+      expect(h.recorder.events, isNot(contains('Deep Link Opened')));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('an install from a Play Store onboarding link is reported',
+        (tester) async {
+      final Harness h = await launch(
+        tester,
+        installReferrer: 'utm_source=mail&flow=onboarding',
+      );
+
+      expect(find.text(_phoneScreen), findsOneWidget);
+      expect(h.recorder.properties('Deep Link Opened')['after_install'], true);
+    });
+  });
+
+  group('review account', () {
+    testWidgets('signs in with the fixed code, without an SMS, onto notes',
+        (tester) async {
+      final Harness h = await launch(tester);
+
+      await sendCode(tester, kReviewPhone);
+      expect(find.text(_codeScreen), findsOneWidget);
+      await enterCode(tester, kReviewCode);
+
+      expect(_notesScreen, findsOneWidget);
+      expect(find.text('New note'), findsOneWidget);
+      expect(find.text('Try Now'), findsNothing);
+      expect(_webScreen, findsNothing);
+      expect(h.backend.codesSentTo, isEmpty);
+      expect(h.backend.isSignedIn, isFalse);
+      expect(h.recorder.events, contains('Review Account Signed In'));
+      // No account to tie events to.
+      expect(h.recorder.otherMethods, isNot(contains('identify')));
+      final OnboardingState saved = await _savedState();
+      expect(saved.stage, OnboardingStage.notes);
+      expect(saved.reviewAccount, isTrue);
+    });
+
+    testWidgets('can create a note, which is kept on the device', (tester) async {
+      await launch(tester);
+      await sendCode(tester, kReviewPhone);
+      await enterCode(tester, kReviewCode);
+
+      await tester.tap(find.text('New note'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.bySemanticsIdentifier('note_title_field'),
+        'Groceries',
+      );
+      await tester.tap(find.bySemanticsIdentifier('note_save_button'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Groceries'), findsOneWidget);
+      // It is the local store, not Supabase, that holds it.
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('local_notes_v1'), contains('Groceries'));
+    });
+
+    testWidgets('any other code is wrong', (tester) async {
+      await launch(tester);
+      await sendCode(tester, kReviewPhone);
+
+      await enterCode(tester, '654321');
+
+      expect(find.textContaining("That code isn't right"), findsOneWidget);
+      expect(find.text(_codeScreen), findsOneWidget);
+    });
+
+    testWidgets('the same number from another country is an ordinary number',
+        (tester) async {
+      final Harness h = await launch(tester);
+      await tester.tap(find.bySemanticsIdentifier('country_picker'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, 'united states');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('United States').first);
+      await tester.pumpAndSettle();
+
+      await sendCode(tester, kReviewPhone);
+
+      expect(h.backend.codesSentTo, <String>['+1$kReviewPhone']);
+    });
+
+    testWidgets('stays on notes across a restart with no session, and the '
+        'server is not asked', (tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'onboarding_v1': const OnboardingState(
+          stage: OnboardingStage.notes,
+          reviewAccount: true,
+        ).encode(),
+      });
+
+      await launch(
+        tester,
+        setup: (FakeBackend b) => b.subscriptionError = BackendError.signedOut,
+      );
+
+      expect(_notesScreen, findsOneWidget);
+    });
+
+    testWidgets('Log out returns to the number without calling the server',
+        (tester) async {
+      final Harness h = await launch(tester);
+      await sendCode(tester, kReviewPhone);
+      await enterCode(tester, kReviewCode);
+
+      await _logOutNotes(tester);
+
+      expect(find.text(_phoneScreen), findsOneWidget);
+      expect(h.backend.signOuts, 0);
+      expect(await _savedState(), isA<OnboardingState>()
+          .having((OnboardingState s) => s.reviewAccount, 'review', isFalse));
     });
   });
 
   group('mobile number', () {
     testWidgets('Send code stays off until the number is valid',
         (tester) async {
-      final Harness h = await launch(tester, coldStartLink: onboardingLink);
+      final Harness h = await launch(tester);
       FilledButton button() =>
           tester.widget<FilledButton>(find.byType(FilledButton));
 
@@ -120,7 +235,7 @@ void main() {
 
     testWidgets('a pasted number loses its country code, not its digits',
         (tester) async {
-      await launch(tester, coldStartLink: onboardingLink);
+      await launch(tester);
 
       await tester.enterText(find.byType(TextField), '+91 98765 43210');
       await tester.pump();
@@ -130,7 +245,7 @@ void main() {
 
     testWidgets('Send code texts the number and opens the code screen',
         (tester) async {
-      final Harness h = await launch(tester, coldStartLink: onboardingLink);
+      final Harness h = await launch(tester);
 
       await tester.enterText(find.byType(TextField), phone);
       await tester.pump();
@@ -152,7 +267,6 @@ void main() {
         (tester) async {
       final Harness h = await launch(
         tester,
-        coldStartLink: onboardingLink,
         setup: (FakeBackend b) => b.sendError = BackendError.network,
       );
 
@@ -173,7 +287,7 @@ void main() {
 
     testWidgets('another country can be chosen, and its code is used',
         (tester) async {
-      final Harness h = await launch(tester, coldStartLink: onboardingLink);
+      final Harness h = await launch(tester);
       expect(find.text('+91'), findsOneWidget);
 
       await tester.tap(find.bySemanticsIdentifier('country_picker'));
@@ -193,7 +307,7 @@ void main() {
     });
 
     testWidgets('the country search finds a calling code', (tester) async {
-      await launch(tester, coldStartLink: onboardingLink);
+      await launch(tester);
       await tester.tap(find.bySemanticsIdentifier('country_picker'));
       await tester.pumpAndSettle();
 
@@ -208,7 +322,6 @@ void main() {
         (tester) async {
       await launch(
         tester,
-        coldStartLink: onboardingLink,
         setup: (FakeBackend b) =>
             b.sendError = BackendError.countryNotSupported,
       );
@@ -222,7 +335,6 @@ void main() {
     testWidgets('too many requests is said plainly', (tester) async {
       await launch(
         tester,
-        coldStartLink: onboardingLink,
         setup: (FakeBackend b) => b.sendError = BackendError.tooManyRequests,
       );
 
@@ -243,7 +355,6 @@ void main() {
         (tester) async {
       await launch(
         tester,
-        coldStartLink: onboardingLink,
         setup: (FakeBackend b) => b.config = slides,
       );
 
@@ -266,7 +377,6 @@ void main() {
     testWidgets('a swipe moves to the next slide', (tester) async {
       await launch(
         tester,
-        coldStartLink: onboardingLink,
         setup: (FakeBackend b) => b.config = slides,
       );
 
@@ -284,7 +394,6 @@ void main() {
         (tester) async {
       await launch(
         tester,
-        coldStartLink: onboardingLink,
         setup: (FakeBackend b) => b.config = slides,
       );
       addTearDown(tester.view.resetViewInsets);
@@ -309,7 +418,6 @@ void main() {
         'with the keyboard closed', (tester) async {
       await launch(
         tester,
-        coldStartLink: onboardingLink,
         setup: (FakeBackend b) => b
           ..config = slides
           ..configDelay = const Duration(seconds: 1),
@@ -334,7 +442,6 @@ void main() {
         (tester) async {
       await launch(
         tester,
-        coldStartLink: onboardingLink,
         setup: (FakeBackend b) =>
             b.configDelay = const Duration(seconds: 30),
         settle: false,
@@ -352,14 +459,36 @@ void main() {
 
     testWidgets('with no slides from the backend there is no carousel',
         (tester) async {
-      await launch(tester, coldStartLink: onboardingLink);
+      await launch(tester);
       expect(find.bySemanticsIdentifier('login_carousel'), findsNothing);
+    });
+
+    testWidgets('slides arriving after the form is shown do not rearrange it',
+        (tester) async {
+      // A saved config with no slides settles at once, so the form shows
+      // without a carousel; the refresh then brings slides.
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'evos_config_v1': '{"app_name":"Evos"}',
+      });
+
+      await launch(
+        tester,
+        setup: (FakeBackend b) => b.config = <String, String>{
+          'login_slide_images': 'https://cdn.example.com/1.png',
+          'login_slide_titles': 'Hear every payment',
+        },
+      );
+
+      // The late slides must not swap in the carousel layout under the user.
+      expect(find.text('Welcome to Evos'), findsOneWidget);
+      expect(find.bySemanticsIdentifier('login_carousel'), findsNothing);
+      expect(find.text('Hear every payment'), findsNothing);
     });
   });
 
   group('code', () {
     testWidgets('the sixth digit signs in without a button', (tester) async {
-      await launch(tester, coldStartLink: onboardingLink);
+      await launch(tester);
       await sendCode(tester);
 
       await tester.enterText(find.byType(TextField), '12345');
@@ -374,7 +503,7 @@ void main() {
 
     testWidgets('a wrong code says so, empties the boxes, and can be retried',
         (tester) async {
-      await launch(tester, coldStartLink: onboardingLink);
+      await launch(tester);
       await sendCode(tester);
 
       await enterCode(tester, '000000');
@@ -393,7 +522,7 @@ void main() {
 
     testWidgets('Change number goes back with the number still filled in',
         (tester) async {
-      await launch(tester, coldStartLink: onboardingLink);
+      await launch(tester);
       await sendCode(tester);
 
       await tester.tap(find.byTooltip('Change number'));
@@ -405,7 +534,7 @@ void main() {
 
     testWidgets('a new code can be asked for after the wait, not before',
         (tester) async {
-      final Harness h = await launch(tester, coldStartLink: onboardingLink);
+      final Harness h = await launch(tester);
       await sendCode(tester);
 
       expect(find.text('Resend code'), findsNothing);
@@ -424,13 +553,12 @@ void main() {
     testWidgets('someone who already pays skips the paywall', (tester) async {
       await launch(
         tester,
-        coldStartLink: onboardingLink,
         setup: (FakeBackend b) => b.subscribed = true,
       );
 
       await signIn(tester);
 
-      expect(find.text(_maintenance), findsOneWidget);
+      expect(_webScreen, findsOneWidget);
       expect(find.text('Try Now'), findsNothing);
     });
   });
@@ -440,7 +568,6 @@ void main() {
         (tester) async {
       await launch(
         tester,
-        coldStartLink: onboardingLink,
         setup: (FakeBackend b) => b.config = <String, String>{
           'app_name': 'Zed',
           'paywall_title_prefix': '7-Day',
@@ -483,7 +610,6 @@ void main() {
       // paywall as a video that fails to load on a phone.
       final Harness h = await launch(
         tester,
-        coldStartLink: onboardingLink,
         setup: (FakeBackend b) => b.config = <String, String>{
           'paywall_video_url': 'https://cdn.example.com/preview.mp4',
         },
@@ -500,7 +626,6 @@ void main() {
         (tester) async {
       await launch(
         tester,
-        coldStartLink: onboardingLink,
         setup: (FakeBackend b) => b.config = <String, String>{
           'paywall_video_url': 'https://cdn.example.com/preview.mp4',
           'paywall_preview_image_url': 'https://cdn.example.com/poster.jpg',
@@ -519,7 +644,6 @@ void main() {
         (tester) async {
       await launch(
         tester,
-        coldStartLink: onboardingLink,
         gateway: FakeGateway(apps: const <UpiApp>[]),
         setup: (FakeBackend b) => b.config = <String, String>{
           'cashfree_trial_amount': '5',
@@ -557,7 +681,6 @@ void main() {
     testWidgets('takes its colour from the backend', (tester) async {
       await launch(
         tester,
-        coldStartLink: onboardingLink,
         setup: (FakeBackend b) =>
             b.config = <String, String>{'theme_color': '#0B7A5C'},
       );
@@ -580,7 +703,7 @@ void main() {
 
     testWidgets('with nothing sent, shows no rating and no social proof',
         (tester) async {
-      await launch(tester, coldStartLink: onboardingLink);
+      await launch(tester);
       await signIn(tester);
 
       expect(find.byIcon(Icons.star_rounded), findsNothing);
@@ -589,24 +712,61 @@ void main() {
       expect(find.text('₹299'), findsOneWidget);
     });
 
-    testWidgets('Try Now pays with the first UPI app and opens maintenance',
+    testWidgets('Try Now pays with the first UPI app and opens the web page',
         (tester) async {
-      final Harness h = await launch(tester, coldStartLink: onboardingLink);
+      final Harness h = await launch(tester);
       await signIn(tester);
       expect(find.text('PhonePe'), findsOneWidget);
 
       await tester.tap(find.text('Try Now'));
       await tester.pump();
+      // The processing screen covers the paywall, not a button spinner.
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.textContaining('payment'), findsWidgets);
       await tester.pumpAndSettle();
 
-      expect(find.text(_maintenance), findsOneWidget);
+      expect(_webScreen, findsOneWidget);
       expect(h.gateway.paidWith, <String>['PhonePe']);
-      expect(await _savedStage(), OnboardingStage.maintenance);
+      expect(h.gateway.stages, contains(CheckoutStage.confirming));
+      expect(await _savedStage(), OnboardingStage.web);
+    });
+
+    testWidgets('Back on the processing screen stops the payment and stays',
+        (tester) async {
+      final Harness h = await launch(tester);
+      await signIn(tester);
+
+      await tester.tap(find.text('Try Now'));
+      await tester.pump();
+      expect(find.text('Getting your payment ready'), findsOneWidget);
+
+      // The system back button, which PopScope turns into "leave".
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Try Now'), findsOneWidget);
+      expect(find.text('Getting your payment ready'), findsNothing);
+      expect(_webScreen, findsNothing);
+      expect(h.gateway.paidWith, isEmpty);
+    });
+
+    testWidgets('a late approval after a cancel lets the user in by itself',
+        (tester) async {
+      final Harness h = await launch(
+        tester,
+        gateway: FakeGateway(failure: const PaymentCanceled())
+          ..lateConfirm = true,
+      );
+      await signIn(tester);
+
+      await tapTryNow(tester);
+
+      expect(h.gateway.lateChecks, 1);
+      expect(_webScreen, findsOneWidget);
     });
 
     testWidgets('another UPI app can be chosen', (tester) async {
-      final Harness h = await launch(tester, coldStartLink: onboardingLink);
+      final Harness h = await launch(tester);
       await signIn(tester);
 
       await tester.tap(find.text('PhonePe'));
@@ -624,7 +784,6 @@ void main() {
         (tester) async {
       final Harness h = await launch(
         tester,
-        coldStartLink: onboardingLink,
         gateway: FakeGateway(apps: const <UpiApp>[]),
       );
       await signIn(tester);
@@ -639,7 +798,6 @@ void main() {
     testWidgets('a declined payment shows an error and stays', (tester) async {
       await launch(
         tester,
-        coldStartLink: onboardingLink,
         gateway: FakeGateway(
           failure: const PaymentFailure(PaymentError.declined),
         ),
@@ -651,13 +809,12 @@ void main() {
       expect(find.textContaining("The payment didn't go through."),
           findsOneWidget);
       expect(find.text('Try Now'), findsOneWidget);
-      expect(find.text(_maintenance), findsNothing);
+      expect(_webScreen, findsNothing);
     });
 
     testWidgets('a cancelled payment stays without an error', (tester) async {
       await launch(
         tester,
-        coldStartLink: onboardingLink,
         gateway: FakeGateway(failure: const PaymentCanceled()),
       );
       await signIn(tester);
@@ -666,14 +823,13 @@ void main() {
 
       expect(find.text('Try Now'), findsOneWidget);
       expect(find.textContaining("didn't go through"), findsNothing);
-      expect(find.text(_maintenance), findsNothing);
+      expect(_webScreen, findsNothing);
     });
 
     testWidgets('a server failure shows the code the server gave',
         (tester) async {
       final Harness h = await launch(
         tester,
-        coldStartLink: onboardingLink,
         gateway: FakeGateway(
           failure: const BackendFailure(
             BackendError.server,
@@ -698,7 +854,6 @@ void main() {
         (tester) async {
       await launch(
         tester,
-        coldStartLink: onboardingLink,
         gateway: FakeGateway(
           failure: const PaymentFailure(PaymentError.pending),
         ),
@@ -715,7 +870,6 @@ void main() {
         (tester) async {
       await launch(
         tester,
-        coldStartLink: onboardingLink,
         gateway: FakeGateway(
           failure: const BackendFailure(BackendError.alreadySubscribed),
         ),
@@ -724,14 +878,13 @@ void main() {
 
       await tapTryNow(tester);
 
-      expect(find.text(_maintenance), findsOneWidget);
+      expect(_webScreen, findsOneWidget);
     });
 
     testWidgets('only a simulated gateway shows the test-mode notice',
         (tester) async {
       await launch(
         tester,
-        coldStartLink: onboardingLink,
         gateway: FakeGateway(isSimulated: true),
       );
       await signIn(tester);
@@ -739,85 +892,165 @@ void main() {
     });
 
     testWidgets('a real gateway shows no test-mode notice', (tester) async {
-      await launch(tester, coldStartLink: onboardingLink);
+      await launch(tester);
       await signIn(tester);
       expect(find.text('Test mode: no payment is taken.'), findsNothing);
     });
 
     testWidgets('has no Log out', (tester) async {
-      await launch(tester, coldStartLink: onboardingLink);
+      await launch(tester);
       await signIn(tester);
 
       expect(find.text('Try Now'), findsOneWidget);
       expect(find.text('Log out'), findsNothing);
     });
 
-    testWidgets('Log out on maintenance returns to the number, not to notes',
+    testWidgets('Log out on the web page returns to the number',
         (tester) async {
-      final Harness h = await launch(tester, coldStartLink: onboardingLink);
+      final Harness h = await launch(tester);
       await signIn(tester);
       await tapTryNow(tester);
 
-      await tester.tap(find.text('Log out'));
-      await tester.pumpAndSettle();
+      await _logOut(tester);
 
       expect(find.text(_phoneScreen), findsOneWidget);
-      expect(find.text(_notesApp), findsNothing);
       expect(h.backend.signOuts, 1);
       expect(h.backend.isSignedIn, isFalse);
       expect(await _savedStage(), OnboardingStage.signIn);
     });
   });
 
-  group('maintenance', () {
-    testWidgets('shows the message the backend sent', (tester) async {
-      SharedPreferences.setMockInitialValues(
-        _saved(OnboardingStage.maintenance),
+  group('web page', () {
+    testWidgets('with no URL from the backend, says it is not ready',
+        (tester) async {
+      SharedPreferences.setMockInitialValues(_saved(OnboardingStage.web));
+      final Harness h = await launch(
+        tester,
+        setup: (FakeBackend b) => b.subscribed = true,
       );
+
+      expect(find.text(_noPage), findsOneWidget);
+      expect(h.recorder.properties('Web Page Viewed')['has_url'], false);
+    });
+
+    testWidgets('Check again picks up a URL set meanwhile', (tester) async {
+      SharedPreferences.setMockInitialValues(_saved(OnboardingStage.web));
+      final Harness h = await launch(
+        tester,
+        setup: (FakeBackend b) => b.subscribed = true,
+      );
+
+      await tester.tap(find.text('Check again'));
+      await tester.pumpAndSettle();
+      expect(find.text('Nothing new yet. Check back later.'), findsOneWidget);
+      // Let the message go: it sits over the button.
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+
+      h.backend.config = <String, String>{
+        'webview_url': 'https://app.example.com/',
+      };
+      await tester.tap(find.text('Check again'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(_noPage), findsNothing);
+      // No WebView exists in a widget test; on a phone the page shows here.
+      expect(find.text('This page cannot be shown on this device.'),
+          findsOneWidget);
+      expect(find.byTooltip('Reload'), findsOneWidget);
+    });
+
+    testWidgets('a URL that is not https is not loaded', (tester) async {
+      SharedPreferences.setMockInitialValues(_saved(OnboardingStage.web));
+      await launch(
+        tester,
+        setup: (FakeBackend b) => b
+          ..subscribed = true
+          ..config = <String, String>{'webview_url': 'http://app.example.com/'},
+      );
+
+      expect(find.text(_noPage), findsOneWidget);
+    });
+
+    testWidgets("a tagged source gets that source's page, not the global one",
+        (tester) async {
+      SharedPreferences.setMockInitialValues(_saved(OnboardingStage.web));
+      final Harness h = await launch(
+        tester,
+        installSource: 'filmyface',
+        setup: (FakeBackend b) => b
+          ..subscribed = true
+          ..config = <String, String>{
+            'webview_url': 'https://default.example.com/',
+          }
+          ..webUrlBySource = <String, String>{
+            'filmyface': 'https://filmyface.example.com/evos',
+          },
+      );
+
+      // No WebView renders in a test, so a present page shows this instead of
+      // the "all set" screen; the cached config proves which URL it is.
+      expect(find.text(_noPage), findsNothing);
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('evos_config_v1'),
+          contains('filmyface.example.com'));
+      // The source is on the view event so a misroute is visible in Mixpanel.
+      expect(h.recorder.properties('Web Page Viewed')['install_source'],
+          'filmyface');
+    });
+
+    testWidgets('without a source, the global web page is used',
+        (tester) async {
+      SharedPreferences.setMockInitialValues(_saved(OnboardingStage.web));
       await launch(
         tester,
         setup: (FakeBackend b) => b
           ..subscribed = true
           ..config = <String, String>{
-            'maintenance_title': 'Back on Monday',
-            'maintenance_message': 'We are upgrading our servers.',
+            'webview_url': 'https://default.example.com/',
+          }
+          ..webUrlBySource = <String, String>{
+            'filmyface': 'https://filmyface.example.com/evos',
           },
       );
 
-      expect(find.text('Back on Monday'), findsOneWidget);
-      expect(find.text('We are upgrading our servers.'), findsOneWidget);
-    });
-
-    testWidgets('Check again picks up a changed message', (tester) async {
-      SharedPreferences.setMockInitialValues(
-        _saved(OnboardingStage.maintenance),
-      );
-      final Harness h = await launch(
-        tester,
-        setup: (FakeBackend b) => b.subscribed = true,
-      );
-      expect(find.text(_maintenance), findsOneWidget);
-
-      await tester.tap(find.text('Check again'));
-      await tester.pumpAndSettle();
-      expect(find.text('Nothing new yet. Check back later.'), findsOneWidget);
-
-      h.backend.config = <String, String>{'maintenance_title': 'Almost there'};
-      await tester.tap(find.text('Check again'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Almost there'), findsOneWidget);
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      expect(
+          prefs.getString('evos_config_v1'), contains('default.example.com'));
+      expect(prefs.getString('evos_config_v1'), isNot(contains('filmyface')));
     });
   });
 
   group('restart', () {
-    testWidgets('the stage survives a restart with no link', (tester) async {
+    testWidgets('the stage survives a restart', (tester) async {
       SharedPreferences.setMockInitialValues(_saved(OnboardingStage.paywall));
 
       await launch(tester);
 
       expect(find.text('Try Now'), findsOneWidget);
-      expect(find.text(_notesApp), findsNothing);
+    });
+
+    testWidgets('a device saved at maintenance by an older build opens the '
+        'web page', (tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'onboarding_v1': '{"stage":"maintenance"}',
+        'evos_session_v1': 'fake-session',
+      });
+
+      await launch(tester, setup: (FakeBackend b) => b.subscribed = true);
+
+      expect(_webScreen, findsOneWidget);
+    });
+
+    testWidgets('a device that was on the notes app signs in by phone',
+        (tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'onboarding_v1': '{"stage":"inactive"}',
+      });
+
+      await launch(tester);
+
+      expect(find.text(_phoneScreen), findsOneWidget);
     });
 
     testWidgets('the saved settings brand the very first frame',
@@ -839,7 +1072,7 @@ void main() {
     testWidgets('a paid stage with no sign-in on the device signs in again',
         (tester) async {
       SharedPreferences.setMockInitialValues(
-        _saved(OnboardingStage.maintenance, signedIn: false),
+        _saved(OnboardingStage.web, signedIn: false),
       );
 
       await launch(tester);
@@ -861,7 +1094,7 @@ void main() {
     testWidgets('a subscription that has ended returns to the paywall',
         (tester) async {
       SharedPreferences.setMockInitialValues(
-        _saved(OnboardingStage.maintenance),
+        _saved(OnboardingStage.web),
       );
 
       await launch(tester, setup: (FakeBackend b) => b.subscribed = false);
@@ -876,13 +1109,13 @@ void main() {
 
       await launch(tester, setup: (FakeBackend b) => b.subscribed = true);
 
-      expect(find.text(_maintenance), findsOneWidget);
+      expect(_webScreen, findsOneWidget);
     });
 
     testWidgets('offline, a subscriber is not sent back to the paywall',
         (tester) async {
       SharedPreferences.setMockInitialValues(
-        _saved(OnboardingStage.maintenance),
+        _saved(OnboardingStage.web),
       );
 
       await launch(
@@ -892,13 +1125,13 @@ void main() {
           ..subscriptionError = BackendError.network,
       );
 
-      expect(find.text(_maintenance), findsOneWidget);
+      expect(_webScreen, findsOneWidget);
     });
 
     testWidgets('a sign-in the server no longer accepts signs in again',
         (tester) async {
       SharedPreferences.setMockInitialValues(
-        _saved(OnboardingStage.maintenance),
+        _saved(OnboardingStage.web),
       );
 
       await launch(
@@ -911,7 +1144,7 @@ void main() {
 
     testWidgets('opening the link again keeps the progress made',
         (tester) async {
-      await launch(tester, coldStartLink: onboardingLink);
+      await launch(tester);
       await signIn(tester);
       expect(find.text('Try Now'), findsOneWidget);
 
@@ -920,14 +1153,13 @@ void main() {
       expect(find.text('Try Now'), findsOneWidget);
     });
 
-    testWidgets('no screen offers a way back to the notes app',
-        (tester) async {
-      await launch(tester, coldStartLink: onboardingLink);
-      expect(find.textContaining('Reset'), findsNothing);
+    testWidgets('no screen offers Google sign-in', (tester) async {
+      await launch(tester);
+      expect(find.text(_googleSignIn), findsNothing);
       await signIn(tester);
-      expect(find.textContaining('Reset'), findsNothing);
+      expect(find.text(_googleSignIn), findsNothing);
       await tapTryNow(tester);
-      expect(find.textContaining('Reset'), findsNothing);
+      expect(find.text(_googleSignIn), findsNothing);
     });
   });
 }

@@ -4,6 +4,8 @@
     "namespace": "android_app",
     "package_name": "com.spacewire.evos",
     "sha256_cert_fingerprints": [
+      "4A:2D:5C:C1:47:55:AF:2E:E5:09:76:5B:27:72:98:AA:CD:37:C6:FE:FA:35:9F:DC:30:5A:DD:68:D7:73:9E:55",
+      "C3:40:52:4B:EB:71:07:05:F5:4C:D7:BA:CD:0E:E9:B2:2A:6E:B5:4A:B0:4C:2B:61:4A:AF:69:10:89:83:87:10",
       "D3:D7:62:74:68:BB:CE:E9:E8:FF:92:7D:FA:05:7B:50:1B:7B:BD:6A:14:E0:5C:BA:7B:8E:03:CE:E0:B9:30:96"
     ]
   }

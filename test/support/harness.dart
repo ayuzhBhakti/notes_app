@@ -13,8 +13,8 @@ import 'package:evos/services/onboarding_store.dart';
 import 'package:evos/services/payment_gateway.dart';
 
 // Shared by the widget tests that pump the real NotesApp. Firebase is never
-// initialised: the only Firebase-backed provider the signed-out path reads is
-// authStateProvider, which is overridden with a signed-out stream.
+// initialised: no screen AppGate shows reads it. authStateProvider is still
+// overridden with a signed-out stream in case one ever does.
 
 const String onboardingLink = 'https://$kDeepLinkHost/onboarding';
 
@@ -61,6 +61,9 @@ class FakeBackend implements EvosBackend {
   final OnboardingStore _store;
 
   Map<String, String> config = <String, String>{};
+  // A webview_url per install source, overriding config['webview_url'] when
+  // fetchConfig is called with a matching source. Mirrors webview_sources.
+  Map<String, String> webUrlBySource = <String, String>{};
   // How long the settings take to answer, as on a slow first launch.
   Duration configDelay = Duration.zero;
   bool subscribed = false;
@@ -103,10 +106,12 @@ class FakeBackend implements EvosBackend {
   }
 
   @override
-  Future<Map<String, String>> fetchConfig() async {
+  Future<Map<String, String>> fetchConfig(String? installSource) async {
     if (configDelay > Duration.zero) await Future<void>.delayed(configDelay);
     if (configError != null) throw BackendFailure(configError!);
-    return config;
+    final String? source = installSource?.trim().toLowerCase();
+    if (source == null || !webUrlBySource.containsKey(source)) return config;
+    return <String, String>{...config, 'webview_url': webUrlBySource[source]!};
   }
 
   @override
@@ -142,6 +147,16 @@ class FakeGateway implements PaymentGateway {
   final List<UpiApp> apps;
   final List<String> paidWith = <String>[];
 
+  /// The stages reported through `onStage`, in order, so a test can see the
+  /// processing screen was driven.
+  final List<CheckoutStage> stages = <CheckoutStage>[];
+
+  /// What [checkLastAttempt] returns, and how many times it was asked.
+  bool lateConfirm = false;
+  int lateChecks = 0;
+
+  bool _left = false;
+
   @override
   final bool isSimulated;
 
@@ -149,10 +164,31 @@ class FakeGateway implements PaymentGateway {
   Future<List<UpiApp>> upiApps() async => apps;
 
   @override
-  Future<void> subscribe(UpiApp app) async {
+  Future<void> subscribe(
+    UpiApp app, {
+    void Function(CheckoutStage stage)? onStage,
+  }) async {
+    _left = false;
+    void emit(CheckoutStage stage) {
+      stages.add(stage);
+      onStage?.call(stage);
+    }
+
+    emit(CheckoutStage.preparing);
     await Future<void>.delayed(const Duration(milliseconds: 50));
+    if (_left) throw const PaymentCanceled();
     if (failure != null) throw failure!;
+    emit(CheckoutStage.confirming);
     paidWith.add(app.name);
+  }
+
+  @override
+  void leave() => _left = true;
+
+  @override
+  Future<bool> checkLastAttempt() async {
+    lateChecks += 1;
+    return lateConfirm;
   }
 }
 
@@ -170,6 +206,7 @@ Future<Harness> launch(
   WidgetTester tester, {
   String? coldStartLink,
   String? installReferrer,
+  String? installSource,
   FakeGateway? gateway,
   void Function(FakeBackend backend)? setup,
   // False returns after the first frames, for what shows while loading.
@@ -183,6 +220,7 @@ Future<Harness> launch(
   final DeepLinkService deepLinks = DeepLinkService(tester.binding)..start();
   addTearDown(deepLinks.dispose);
   final OnboardingStore store = await OnboardingStore.open();
+  if (installSource != null) await store.saveInstallSource(installSource);
   final Harness harness = Harness(
     Recorder(),
     FakeBackend(store),

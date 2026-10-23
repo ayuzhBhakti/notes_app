@@ -2,18 +2,19 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'models/country.dart';
 import 'models/note.dart';
 import 'models/onboarding.dart';
+import 'models/review_account.dart';
 import 'models/remote_config.dart';
 import 'services/analytics.dart';
 import 'services/auth_service.dart';
 import 'services/deep_link_service.dart';
 import 'services/install_referrer_service.dart';
 import 'services/evos_backend.dart';
+import 'services/local_notes_store.dart';
 import 'services/notes_repository.dart';
 import 'services/onboarding_store.dart';
 import 'services/payment_gateway.dart';
@@ -55,70 +56,25 @@ final Provider<User?> currentUserProvider =
 final Provider<String?> currentUidProvider =
     Provider<String?>((Ref ref) => ref.watch(currentUserProvider)?.uid);
 
-/// Tracks consecutive cancellations so the sign-in screen can hint at the one
-/// configuration problem that is otherwise invisible.
-class SignInState {
-  const SignInState({this.consecutiveCancels = 0});
-
-  final int consecutiveCancels;
-
-  /// An unregistered SHA-1 makes Credential Manager return a cancellation that
-  /// the plugin cannot tell apart from a real one.
-  ///
-  /// In release, two in a row is the tell — one cancel is usually genuine. In
-  /// debug the hint shows immediately, because during development a silent
-  /// cancel is far more often a misconfiguration than a real change of mind,
-  /// and the alternative is a screen that does nothing with no explanation.
-  bool get suspectMisconfiguration =>
-      consecutiveCancels >= (kDebugMode ? 1 : 2);
-}
-
-class SignInController extends AsyncNotifier<SignInState> {
-  /// A synchronous `build()` is a legal override of `FutureOr<StateT> build()`,
-  /// and means the first frame is already AsyncData rather than AsyncLoading.
+/// Signs the notes interface out of Firebase. Nothing in the app signs in to
+/// Firebase any more (Google sign-in was removed on 2026-10-22), so this only
+/// matters to a device that kept an older session.
+class SignInController extends AsyncNotifier<void> {
   @override
-  SignInState build() => const SignInState();
-
-  Future<void> signIn() async {
-    final SignInState previous = state.value ?? const SignInState();
-    final Analytics analytics = ref.read(analyticsProvider);
-    analytics.signInStarted();
-    state = const AsyncValue<SignInState>.loading();
-    try {
-      final bool newUser =
-          await ref.read(authServiceProvider).signInWithGoogle();
-      analytics.signInSucceeded(newUser: newUser);
-      state = const AsyncValue<SignInState>.data(SignInState());
-      // No navigation here — the auth gate reacts to authStateChanges().
-    } on SignInCanceled {
-      analytics.signInCancelled();
-      state = AsyncValue<SignInState>.data(
-        SignInState(consecutiveCancels: previous.consecutiveCancels + 1),
-      );
-    } catch (error, stackTrace) {
-      analytics.signInFailed(errorCode(error));
-      state = AsyncValue<SignInState>.error(error, stackTrace);
-    }
-  }
+  void build() {}
 
   Future<void> signOut() async {
-    state = const AsyncValue<SignInState>.loading();
+    state = const AsyncValue<void>.loading();
     final AsyncValue<void> result = await AsyncValue.guard<void>(
       () => ref.read(authServiceProvider).signOut(),
     );
-    // Here rather than on the auth stream going null: that also happens while
-    // the stream is loading or in error, and a reset then would cut a
-    // signed-in person off from their own earlier events.
     if (!result.hasError) ref.read(analyticsProvider).signedOut();
-    state = result.hasError
-        ? AsyncValue<SignInState>.error(result.error!, result.stackTrace!)
-        : const AsyncValue<SignInState>.data(SignInState());
+    state = result;
   }
 }
 
-final AsyncNotifierProvider<SignInController, SignInState>
-    signInControllerProvider =
-    AsyncNotifierProvider<SignInController, SignInState>(SignInController.new);
+final AsyncNotifierProvider<SignInController, void> signInControllerProvider =
+    AsyncNotifierProvider<SignInController, void>(SignInController.new);
 
 // ---------------------------------------------------------------------------
 // Notes
@@ -229,9 +185,82 @@ class NoteActions extends AsyncNotifier<void> {
 final AsyncNotifierProvider<NoteActions, void> noteActionsProvider =
     AsyncNotifierProvider<NoteActions, void>(NoteActions.new);
 
+// ---------------------------------------------------------------------------
+// Local notes (the store-review account only; no Firebase)
+// ---------------------------------------------------------------------------
+
+/// The device-local notes store for the review account. Built from the same
+/// [OnboardingStore] that holds the stage, so it needs no override of its own.
+final Provider<LocalNotesStore> localNotesStoreProvider =
+    Provider<LocalNotesStore>((Ref ref) {
+  final LocalNotesStore store =
+      LocalNotesStore(ref.watch(onboardingStoreProvider));
+  ref.onDispose(store.dispose);
+  return store;
+});
+
+/// The review account's notes, newest edit first. The notes screens read this
+/// instead of [notesStreamProvider] because that account has no Firebase uid.
+final StreamProvider<List<Note>> localNotesStreamProvider =
+    StreamProvider<List<Note>>(
+  (Ref ref) => ref.watch(localNotesStoreProvider).watch(),
+);
+
+/// Save / delete / restore for the local notes, mirroring [NoteActions] so the
+/// notes screens are identical but for which provider they read. Local writes
+/// settle at once, so this never shows a long busy state, but the shape is
+/// kept so the screens' error handling works unchanged.
+class LocalNoteActions extends AsyncNotifier<void> {
+  @override
+  void build() {}
+
+  Future<bool> _run(
+    void Function(Analytics analytics) track,
+    Future<void> Function(LocalNotesStore store) action,
+  ) async {
+    final LocalNotesStore store = ref.read(localNotesStoreProvider);
+    track(ref.read(analyticsProvider));
+    state = const AsyncValue<void>.loading();
+    final AsyncValue<void> result =
+        await AsyncValue.guard<void>(() => action(store));
+    state = result;
+    return !result.hasError;
+  }
+
+  Future<bool> save({
+    String? id,
+    required String title,
+    required String body,
+  }) {
+    if (id == null) {
+      return _run(
+        (Analytics analytics) => analytics.noteCreated(),
+        (LocalNotesStore store) => store.create(title: title, body: body),
+      );
+    }
+    return _run(
+      (Analytics analytics) => analytics.noteUpdated(),
+      (LocalNotesStore store) => store.update(id, title: title, body: body),
+    );
+  }
+
+  Future<bool> delete(String id) => _run(
+        (Analytics analytics) => analytics.noteDeleted(),
+        (LocalNotesStore store) => store.delete(id),
+      );
+
+  Future<bool> restore(Note note) => _run(
+        (Analytics analytics) => analytics.noteRestored(),
+        (LocalNotesStore store) => store.restore(note),
+      );
+}
+
+final AsyncNotifierProvider<LocalNoteActions, void> localNoteActionsProvider =
+    AsyncNotifierProvider<LocalNoteActions, void>(LocalNoteActions.new);
+
 
 // ---------------------------------------------------------------------------
-// Onboarding (deep link -> mobile number -> code -> paywall -> maintenance)
+// Onboarding (mobile number -> code -> paywall -> web page)
 // ---------------------------------------------------------------------------
 
 /// Both are created in `main()` and supplied through ProviderScope overrides:
@@ -247,9 +276,8 @@ final Provider<DeepLinkService> deepLinkServiceProvider =
   (Ref ref) => throw UnimplementedError('Overridden in main().'),
 );
 
-/// The referrer of the Play Store link that led to this install. `main()`
-/// overrides it on the first launch only; on every later launch it is null and
-/// the saved onboarding state decides.
+/// The referrer of the Play Store link that led to this install, on the
+/// launch that read it; null on every other launch. For analytics only.
 final Provider<String?> installReferrerProvider =
     Provider<String?>((Ref ref) => null);
 
@@ -280,7 +308,7 @@ final FutureProvider<List<UpiApp>> upiAppsProvider =
 );
 
 /// The backend's settings for the interface: name, logo, colour, paywall,
-/// maintenance message. Starts from what the last launch saved, so the first
+/// web page. Starts from what the last launch saved, so the first
 /// frame is already branded, and is replaced when the server answers.
 class RemoteConfigController extends Notifier<RemoteConfig> {
   @override
@@ -294,7 +322,11 @@ class RemoteConfigController extends Notifier<RemoteConfig> {
   Future<void> refresh() async {
     final Map<String, String> rows;
     try {
-      rows = await ref.read(evosBackendProvider).fetchConfig();
+      // Read straight from the store, not a cached provider: the source is
+      // written in main() before runApp, so this is always the current value.
+      rows = await ref
+          .read(evosBackendProvider)
+          .fetchConfig(ref.read(onboardingStoreProvider).installSource);
     } on BackendFailure {
       _settle();
       return;
@@ -341,63 +373,47 @@ final NotifierProvider<RemoteConfigSettledController, bool>
   RemoteConfigSettledController.new,
 );
 
-/// Decides which interface the app shows. `AppGate` renders from this state,
-/// so nothing here ever navigates.
+/// Decides which screen the app shows. `AppGate` renders from this state, so
+/// nothing here ever navigates.
 class OnboardingController extends Notifier<OnboardingState> {
   @override
   OnboardingState build() {
+    // Links and the install referrer no longer decide anything: every user
+    // signs in by phone. They are still reported, for attribution.
     final DeepLinkService deepLinks = ref.watch(deepLinkServiceProvider);
     final StreamSubscription<Uri> subscription =
         deepLinks.links.listen(_onLink);
     ref.onDispose(subscription.cancel);
+    final Uri? initial = deepLinks.initialLink;
+    final bool byReferrer =
+        isOnboardingReferrer(ref.watch(installReferrerProvider));
+    if (byReferrer || (initial != null && isOnboardingLink(initial))) {
+      ref.read(analyticsProvider).deepLinkOpened(afterInstall: byReferrer);
+    }
 
     final OnboardingStore store = ref.watch(onboardingStoreProvider);
     final OnboardingState stored = store.load();
-    final Uri? initial = deepLinks.initialLink;
-    // Two ways in: installed from a Play Store link carrying the onboarding
-    // referrer, or opened directly by the onboarding link.
-    final bool byReferrer =
-        isOnboardingReferrer(ref.watch(installReferrerProvider));
-    final bool arrivedByLink =
-        byReferrer || (initial != null && isOnboardingLink(initial));
-    if (arrivedByLink) {
-      ref.read(analyticsProvider).deepLinkOpened(
-            afterInstall: byReferrer,
-            startedOnboarding: !stored.isActive,
-          );
-    }
-
     OnboardingState start = stored;
-    if (!stored.isActive && arrivedByLink) {
-      start = const OnboardingState(stage: OnboardingStage.signIn);
-    } else if (stored.isActive &&
-        stored.stage != OnboardingStage.signIn &&
+    if (stored.stage != OnboardingStage.signIn &&
+        !stored.reviewAccount &&
         !ref.watch(evosBackendProvider).isSignedIn) {
       // A stage past sign-in with no sign-in on the device: the session was
       // cleared, or the stage was saved by an older build.
-      start = const OnboardingState(stage: OnboardingStage.signIn);
+      start = const OnboardingState();
     }
-    if (start.stage != stored.stage) unawaited(store.save(start));
+    if (start.encode() != stored.encode()) unawaited(store.save(start));
     // After build: refresh changes state, which build is not allowed to do.
-    if (start.isActive) Future<void>.microtask(refresh);
+    Future<void>.microtask(refresh);
     return start;
   }
 
   void _onLink(Uri uri) {
     if (!isOnboardingLink(uri)) return;
-    ref.read(analyticsProvider).deepLinkOpened(
-          afterInstall: false,
-          startedOnboarding: !state.isActive,
-        );
-    // Opening the link again must not throw away progress already made.
-    if (state.isActive) return;
-    _set(OnboardingStage.signIn);
-    unawaited(refresh());
+    ref.read(analyticsProvider).deepLinkOpened(afterInstall: false);
   }
 
-  void _set(OnboardingStage stage) {
-    if (stage == state.stage) return;
-    final OnboardingState next = OnboardingState(stage: stage);
+  void _set(OnboardingState next) {
+    if (next.encode() == state.encode()) return;
     state = next;
     // Not awaited: SharedPreferences updates its in-memory copy synchronously,
     // and the disk write must not hold up the screen change.
@@ -413,9 +429,11 @@ class OnboardingController extends Notifier<OnboardingState> {
     await ref.read(remoteConfigProvider.notifier).refresh();
     if (!ref.mounted) return;
 
-    final OnboardingStage before = state.stage;
-    if (before != OnboardingStage.paywall &&
-        before != OnboardingStage.maintenance) {
+    final OnboardingState before = state;
+    // The review account has no server session to ask with.
+    if (before.reviewAccount) return;
+    if (before.stage != OnboardingStage.paywall &&
+        before.stage != OnboardingStage.web) {
       return;
     }
     try {
@@ -423,37 +441,52 @@ class OnboardingController extends Notifier<OnboardingState> {
           await ref.read(evosBackendProvider).hasActiveSubscription();
       // The stage moved while the server was answering, by a purchase or a
       // sign-out. That is newer than this answer.
-      if (!ref.mounted || state.stage != before) return;
-      _set(active ? OnboardingStage.maintenance : OnboardingStage.paywall);
+      if (!ref.mounted || state.encode() != before.encode()) return;
+      _set(OnboardingState(
+        stage: active ? OnboardingStage.web : OnboardingStage.paywall,
+      ));
     } on BackendFailure catch (failure) {
-      if (!ref.mounted || state.stage != before) return;
-      if (failure.kind == BackendError.signedOut) _set(OnboardingStage.signIn);
+      if (!ref.mounted || state.encode() != before.encode()) return;
+      if (failure.kind == BackendError.signedOut) {
+        _set(const OnboardingState());
+      }
     }
   }
 
   /// Called by [PhoneAuthController] once the code is verified.
-  void signedIn({required bool subscribed}) => _set(
-        subscribed ? OnboardingStage.maintenance : OnboardingStage.paywall,
+  void signedIn({required bool subscribed}) => _set(OnboardingState(
+        stage: subscribed ? OnboardingStage.web : OnboardingStage.paywall,
+      ));
+
+  /// Called by [PhoneAuthController] for the store-review number. Skips the
+  /// paywall and the web page onto the local notes screen.
+  void reviewSignedIn() => _set(
+        const OnboardingState(
+          stage: OnboardingStage.notes,
+          reviewAccount: true,
+        ),
       );
 
   /// Called by [PurchaseController] once the server has confirmed the mandate.
-  void subscribed() => _set(OnboardingStage.maintenance);
+  void subscribed() =>
+      _set(const OnboardingState(stage: OnboardingStage.web));
 
   /// The server no longer accepts the sign-in. Not a choice the user made, so
   /// it is not reported as a sign-out.
   void sessionExpired() {
     ref.invalidate(phoneAuthControllerProvider);
-    _set(OnboardingStage.signIn);
+    _set(const OnboardingState());
   }
 
-  /// Back to the mobile-number screen. The device stays in this interface:
-  /// signing out is not a way back to the notes app.
+  /// Back to the mobile-number screen.
   Future<void> signOut() async {
     ref.read(analyticsProvider).signedOut();
-    await ref.read(evosBackendProvider).signOut();
+    if (!state.reviewAccount) {
+      await ref.read(evosBackendProvider).signOut();
+    }
     if (!ref.mounted) return;
     ref.invalidate(phoneAuthControllerProvider);
-    _set(OnboardingStage.signIn);
+    _set(const OnboardingState());
   }
 }
 
@@ -527,9 +560,12 @@ class PhoneAuthController extends Notifier<PhoneAuthState> {
       busy: true,
     );
     try {
-      await ref
-          .read(evosBackendProvider)
-          .sendOtp('+${country.dialCode}$phone');
+      // The review number gets no SMS: its code is fixed.
+      if (!isReviewAccount(country, phone)) {
+        await ref
+            .read(evosBackendProvider)
+            .sendOtp('+${country.dialCode}$phone');
+      }
     } catch (error) {
       analytics.otpRequestFailed(errorCode(error));
       if (!ref.mounted) return;
@@ -566,6 +602,15 @@ class PhoneAuthController extends Notifier<PhoneAuthState> {
       busy: true,
     );
     try {
+      if (isReviewAccount(country, phone)) {
+        if (code != kReviewCode) {
+          throw const BackendFailure(BackendError.wrongCode);
+        }
+        analytics.reviewAccountSignedIn();
+        state = const PhoneAuthState();
+        ref.read(onboardingControllerProvider.notifier).reviewSignedIn();
+        return;
+      }
       final SignInResult result = await backend.verifyOtp(e164, code);
       analytics.otpVerified(
         userId: result.userId,
@@ -632,45 +677,97 @@ class PurchaseController extends AsyncNotifier<void> {
       currency: RemoteConfig.currencyCode,
       upiApp: app.name,
     );
+    final CheckoutStageController stage =
+        ref.read(checkoutStageProvider.notifier);
     state = const AsyncValue<void>.loading();
     try {
-      await gateway.subscribe(app);
+      await gateway.subscribe(app, onStage: stage.set);
     } on PaymentCanceled {
-      // A cancel is not an error, the same as a cancelled sign-in.
+      // A cancel is not an error, the same as a cancelled sign-in. The bank
+      // may still approve what the UPI app showed, so keep checking.
       analytics.checkoutCancelled(planId);
-      state = const AsyncValue<void>.data(null);
+      _finish(const AsyncValue<void>.data(null));
+      _checkLater(gateway, planId, config);
       return;
     } on BackendFailure catch (failure, stackTrace) {
       if (failure.kind == BackendError.alreadySubscribed) {
         // Paid earlier, and the device had not heard. Nothing was bought
         // just now, so no purchase is reported.
-        state = const AsyncValue<void>.data(null);
+        _finish(const AsyncValue<void>.data(null));
         onboarding.subscribed();
         return;
       }
       analytics.checkoutFailed(planId, errorCode(failure));
       if (failure.kind == BackendError.signedOut) {
-        state = const AsyncValue<void>.data(null);
+        _finish(const AsyncValue<void>.data(null));
         onboarding.sessionExpired();
         return;
       }
-      state = AsyncValue<void>.error(failure, stackTrace);
+      _finish(AsyncValue<void>.error(failure, stackTrace));
       return;
     } catch (error, stackTrace) {
       analytics.checkoutFailed(planId, errorCode(error));
-      state = AsyncValue<void>.error(error, stackTrace);
+      _finish(AsyncValue<void>.error(error, stackTrace));
+      // A pending or declined attempt may still be approved by the bank.
+      if (error is PaymentFailure &&
+          (error.kind == PaymentError.pending ||
+              error.kind == PaymentError.declined)) {
+        _checkLater(gateway, planId, config);
+      }
       return;
     }
-    analytics.subscriptionSucceeded(
-      planId: planId,
-      amount: config.trialAmount,
-      currency: RemoteConfig.currencyCode,
-      simulated: gateway.isSimulated,
-    );
-    state = const AsyncValue<void>.data(null);
-    onboarding.subscribed();
+    _finish(const AsyncValue<void>.data(null));
+    _succeeded(gateway, planId, config);
+  }
+
+  /// Back on the processing screen: stop waiting. A payment already in the UPI
+  /// app is still checked on ([_checkLater]).
+  void leave() => ref.read(paymentGatewayProvider).leave();
+
+  /// Clears the loading state and closes the processing screen together.
+  void _finish(AsyncValue<void> next) {
+    state = next;
+    ref.read(checkoutStageProvider.notifier).set(CheckoutStage.idle);
+  }
+
+  void _succeeded(PaymentGateway gateway, String planId, RemoteConfig config) {
+    ref.read(analyticsProvider).subscriptionSucceeded(
+          planId: planId,
+          amount: config.trialAmount,
+          currency: RemoteConfig.currencyCode,
+          simulated: gateway.isSimulated,
+        );
+    ref.read(onboardingControllerProvider.notifier).subscribed();
+  }
+
+  /// A late approval lets the user in by itself, as long as they are still on
+  /// the paywall and have not started another attempt.
+  void _checkLater(PaymentGateway gateway, String planId, RemoteConfig config) {
+    unawaited(gateway.checkLastAttempt().then((bool confirmed) {
+      if (!confirmed || !ref.mounted || state.isLoading) return;
+      if (ref.read(onboardingControllerProvider).stage !=
+          OnboardingStage.paywall) {
+        return;
+      }
+      state = const AsyncValue<void>.data(null);
+      _succeeded(gateway, planId, config);
+    }));
   }
 }
+
+/// What the paywall's processing screen shows; idle when it is closed.
+class CheckoutStageController extends Notifier<CheckoutStage> {
+  @override
+  CheckoutStage build() => CheckoutStage.idle;
+
+  void set(CheckoutStage stage) => state = stage;
+}
+
+final NotifierProvider<CheckoutStageController, CheckoutStage>
+    checkoutStageProvider =
+    NotifierProvider<CheckoutStageController, CheckoutStage>(
+  CheckoutStageController.new,
+);
 
 final AsyncNotifierProvider<PurchaseController, void>
     purchaseControllerProvider =

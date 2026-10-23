@@ -46,6 +46,12 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
   // The first slide already being loaded, so each is started once.
   String? _warmed;
 
+  // Whether this screen uses the carousel layout, frozen the first time the
+  // form is shown. Settings fetched a moment later can add or drop slides, but
+  // must not restructure a screen already on display: that is the jump this
+  // fixes. A change is picked up on the next launch instead.
+  bool? _useCarousel;
+
   @override
   void initState() {
     super.initState();
@@ -163,23 +169,27 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
         body: Center(child: CircularProgressIndicator()),
       );
     }
+    // Frozen on the first ready frame, so a later settings fetch cannot swap
+    // the whole layout under the user.
+    final bool useCarousel = _useCarousel ??= hasSlides;
     // Read above the Scaffold, which hides the keyboard's height from its body.
     final bool keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     // As on CashAlert, the carousel steps aside while the number is typed.
-    final bool showCarousel = hasSlides && !keyboardOpen;
+    // `hasSlides` as well, so a carousel frozen on but since emptied is not built.
+    final bool showCarousel = useCarousel && hasSlides && !keyboardOpen;
 
     final Widget form = Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         // With a carousel the brand is already in the header above it.
-        if (!hasSlides) ...<Widget>[
+        if (!useCarousel) ...<Widget>[
           const Align(alignment: Alignment.centerLeft, child: BrandLogo()),
           const SizedBox(height: 28),
         ],
         Text(
           'Welcome to $appName',
-          style: (hasSlides
+          style: (useCarousel
                   ? theme.textTheme.headlineSmall
                   : theme.textTheme.headlineMedium)
               ?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.3),
@@ -203,7 +213,7 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
               country: _country,
               onPickCountry: auth.busy ? null : _pickCountry,
               // Not with a carousel: the keyboard would hide it at once.
-              autofocus: !hasSlides,
+              autofocus: !useCarousel,
               enabled: !auth.busy,
               onSubmitted: _submit,
               // Only once ten digits are in: an error while the number is
@@ -293,7 +303,7 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              if (hasSlides) ...<Widget>[
+              if (useCarousel) ...<Widget>[
                 const Align(
                   alignment: Alignment.centerLeft,
                   child: BrandHeader(),
@@ -301,7 +311,7 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
                 const SizedBox(height: 16),
               ],
               Expanded(
-                child: hasSlides
+                child: useCarousel
                     // The form keeps the same place in this tree whether the
                     // carousel shows or not. Moving it would drop the field's
                     // focus, close the keyboard, bring the carousel back, and

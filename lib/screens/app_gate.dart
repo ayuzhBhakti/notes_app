@@ -4,18 +4,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/onboarding.dart';
 import '../providers.dart';
 import '../widgets/brand.dart';
-import 'auth_gate.dart';
-import 'onboarding/maintenance_screen.dart';
+import 'notes_list_screen.dart';
 import 'onboarding/otp_screen.dart';
 import 'onboarding/paywall_screen.dart';
 import 'onboarding/phone_screen.dart';
+import 'onboarding/web_screen.dart';
 
-/// The root of the app. Chooses between the normal notes app and the
-/// interface for users who arrived through an onboarding deep link.
+/// The root of the app: mobile number, code, paywall, then the web page — or
+/// the local notes screen for the store-review account.
 ///
-/// The onboarding stages are swapped here rather than pushed as routes, the
-/// same way [AuthGate] swaps sign-in for the notes list, so the stage and the
-/// screen can never disagree.
+/// The stages are swapped here rather than pushed as routes, so the stage and
+/// the screen can never disagree.
 class AppGate extends ConsumerWidget {
   const AppGate({super.key});
 
@@ -24,8 +23,7 @@ class AppGate extends ConsumerWidget {
     ref.listen<OnboardingStage>(
       onboardingControllerProvider.select((OnboardingState s) => s.stage),
       (OnboardingStage? previous, OnboardingStage next) {
-        // A link can arrive while a note editor or the profile is open, and
-        // a stage can change under an open sheet. Swapping the root does not
+        // A stage can change under an open sheet. Swapping the root does not
         // remove routes pushed above it, so they have to be popped or they
         // would keep covering the new screen.
         if (previous != next) {
@@ -37,15 +35,18 @@ class AppGate extends ConsumerWidget {
     final OnboardingStage stage = ref.watch(
       onboardingControllerProvider.select((OnboardingState s) => s.stage),
     );
-    if (stage == OnboardingStage.inactive) return const AuthGate();
 
-    // The backend's name and colour apply from here down, and only here.
+    // The notes screen (review account) keeps the app's own violet theme from
+    // the root MaterialApp; it is not a backend-branded screen.
+    if (stage == OnboardingStage.notes) return const NotesListScreen();
+
+    // The backend's name and colour apply to the sign-in, paywall and web page.
     return BrandShell(
       child: switch (stage) {
-        OnboardingStage.inactive => const AuthGate(),
         OnboardingStage.signIn => const _SignIn(),
         OnboardingStage.paywall => const PaywallScreen(),
-        OnboardingStage.maintenance => const MaintenanceScreen(),
+        OnboardingStage.web => const WebScreen(),
+        OnboardingStage.notes => const NotesListScreen(),
       },
     );
   }

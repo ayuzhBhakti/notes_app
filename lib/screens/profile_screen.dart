@@ -1,34 +1,26 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers.dart';
 import '../services/analytics.dart';
 import '../theme.dart';
-import '../utils/errors.dart';
 import '../widgets/track_view.dart';
-import '../widgets/user_avatar.dart';
 
-class ProfileScreen extends ConsumerWidget {
+/// Profile for the store-review account. That account has no Firebase user, so
+/// there is no name, email or photo to show — only a notice and a way out.
+class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final User? user = ref.watch(currentUserProvider);
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
-    final bool busy = ref.watch(signInControllerProvider).isLoading;
-
-    // Signing out pops this route via the auth gate, but the frame in between
-    // still builds, so handle the null case rather than asserting on it.
-    if (user == null) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    final String name = user.displayName?.trim().isNotEmpty ?? false
-        ? user.displayName!.trim()
-        : 'Signed in';
 
     return TrackView(
       onView: (Analytics analytics) => analytics.profileViewed(),
@@ -37,7 +29,7 @@ class ProfileScreen extends ConsumerWidget {
         body: ListView(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
           children: <Widget>[
-            _Header(user: user, name: name),
+            const _Header(),
             const SizedBox(height: 28),
             Padding(
               padding: const EdgeInsets.only(left: 4, bottom: 10),
@@ -48,8 +40,6 @@ class ProfileScreen extends ConsumerWidget {
                 ),
               ),
             ),
-            // A row of plain texts rather than a ListTile, which would merge
-            // them into one node; the Maestro flow looks for "User ID" alone.
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -63,7 +53,7 @@ class ProfileScreen extends ConsumerWidget {
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: Icon(
-                        Icons.fingerprint,
+                        Icons.phone_iphone,
                         color: theme.colorScheme.primary,
                       ),
                     ),
@@ -72,10 +62,10 @@ class ProfileScreen extends ConsumerWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          Text('User ID', style: theme.textTheme.titleSmall),
+                          Text('Notes', style: theme.textTheme.titleSmall),
                           const SizedBox(height: 2),
                           Text(
-                            user.uid,
+                            'Saved on this device.',
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: theme.colorScheme.onSurfaceVariant,
                             ),
@@ -89,7 +79,7 @@ class ProfileScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 32),
             OutlinedButton.icon(
-              onPressed: busy ? null : () => _confirmSignOut(context, ref),
+              onPressed: _busy ? null : () => _confirmSignOut(context),
               icon: const Icon(Icons.logout),
               label: const Text('Log out'),
               style: OutlinedButton.styleFrom(
@@ -106,16 +96,14 @@ class ProfileScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _confirmSignOut(BuildContext context, WidgetRef ref) async {
-    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
-
+  Future<void> _confirmSignOut(BuildContext context) async {
     final bool confirmed = await showDialog<bool>(
           context: context,
           builder: (BuildContext dialogContext) => AlertDialog(
             title: const Text('Log out?'),
             content: const Text(
-              'Your notes stay in your account and will be here when you '
-              'sign back in.',
+              'Your notes stay on this device and will be here when you '
+              'sign back in with this number.',
             ),
             actions: <Widget>[
               TextButton(
@@ -133,24 +121,16 @@ class ProfileScreen extends ConsumerWidget {
 
     if (!confirmed) return;
 
-    await ref.read(signInControllerProvider.notifier).signOut();
-
-    final Object? error = ref.read(signInControllerProvider).error;
-    if (error != null) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(describeError(error).message)),
-      );
-    }
-    // On success the auth gate swaps in the sign-in screen; no pop needed here.
+    setState(() => _busy = true);
+    // AppGate swaps in the mobile-number screen, which removes this route; no
+    // pop is needed here.
+    await ref.read(onboardingControllerProvider.notifier).signOut();
   }
 }
 
 /// The violet card at the top, in the launcher icon's colours.
 class _Header extends StatelessWidget {
-  const _Header({required this.user, required this.name});
-
-  final User user;
-  final String name;
+  const _Header();
 
   @override
   Widget build(BuildContext context) {
@@ -178,27 +158,25 @@ class _Header extends StatelessWidget {
                     shape: BoxShape.circle,
                     color: Colors.white.withValues(alpha: 0.9),
                   ),
-                  child: UserAvatar(user: user, radius: 42),
+                  child: CircleAvatar(
+                    radius: 42,
+                    backgroundColor: theme.colorScheme.primaryContainer,
+                    child: Icon(
+                      Icons.person,
+                      size: 44,
+                      color: theme.colorScheme.onPrimaryContainer,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: 16),
               Text(
-                name,
+                'Signed in',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.titleLarge?.copyWith(
                   color: Colors.white,
                 ),
               ),
-              if (user.email != null) ...<Widget>[
-                const SizedBox(height: 2),
-                Text(
-                  user.email!,
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: Colors.white.withValues(alpha: 0.8),
-                  ),
-                ),
-              ],
             ],
           ),
         ],

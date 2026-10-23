@@ -20,15 +20,18 @@ import io.flutter.plugin.common.MethodChannel
  * apps on the phone and opens one to approve a subscription mandate (UPI
  * Intent mode, no hosted web page).
  *
+ * `startSubscription` answers as soon as the UPI app is opened. Cashfree's
+ * callback is sent to Dart separately (`cashfreeResult`), and Dart decides how
+ * long to wait for it: Cashfree does not always call back when the user
+ * returns without paying, and holding the call open until it did left the
+ * paywall loading for a long time. The same flow as CashAlert's PaywallActivity.
+ *
  * The channel name must match the one in payment_gateway.dart.
  */
 class PaymentsChannel private constructor(
     private val activity: Activity,
+    private val channel: MethodChannel,
 ) : MethodChannel.MethodCallHandler, CFSubscriptionResponseCallback {
-
-    // The one mandate in flight. Answered exactly once, then cleared: replying
-    // twice on a MethodChannel.Result throws.
-    private var pending: MethodChannel.Result? = null
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
@@ -55,10 +58,6 @@ class PaymentsChannel private constructor(
         val upiPackage = call.argument<String>("upiPackage")
         if (subscriptionId == null || sessionId == null || upiPackage == null) {
             result.error("failed", null, "bad_arguments")
-            return
-        }
-        if (pending != null) {
-            result.error("failed", null, "already_in_progress")
             return
         }
         if (!canTakeUpiIntent(upiPackage)) {
@@ -91,10 +90,10 @@ class PaymentsChannel private constructor(
 
             val service = CFPaymentGatewayService.getInstance()
             service.setSubscriptionCheckoutCallback(this)
-            pending = result
             service.doSubscriptionPayment(activity, payment)
+            // Answer now: the outcome arrives separately on `cashfreeResult`.
+            result.success(null)
         } catch (e: Exception) {
-            pending = null
             result.error("failed", null, "launch_failed")
         }
     }
@@ -102,24 +101,25 @@ class PaymentsChannel private constructor(
     // The UPI app has reported back. Whether the mandate really went through
     // is decided by the server, which Dart asks next.
     override fun onSubscriptionVerify(response: CFSubscriptionResponse) {
-        pending?.success(null)
-        pending = null
+        send(response.subscriptionId, ok = true, code = null)
     }
 
+    // Cashfree's code only. Its message is free text and is not passed on.
     override fun onSubscriptionFailure(error: CFErrorResponse) {
-        // Cashfree's code only. Its message is free text and is not passed on.
-        val code = error.code
-        if (code == CANCELLED_CODE) {
-            pending?.error("cancelled", null, null)
-        } else {
-            pending?.error("failed", null, code)
+        send(null, ok = false, code = error.code)
+    }
+
+    private fun send(subscriptionId: String?, ok: Boolean, code: String?) {
+        activity.runOnUiThread {
+            channel.invokeMethod(
+                "cashfreeResult",
+                mapOf("subscriptionId" to subscriptionId, "ok" to ok, "code" to code),
+            )
         }
-        pending = null
     }
 
     companion object {
         private const val CHANNEL = "com.spacewire.evos/payments"
-        private const val CANCELLED_CODE = "action_cancelled"
         private const val UPI_PROBE_URI = "upi://pay?pa=test@upi&pn=Test&am=1.00&cu=INR"
 
         // In the order offered. Each also needs a <package> entry under
@@ -132,7 +132,15 @@ class PaymentsChannel private constructor(
         )
 
         fun register(activity: Activity, messenger: BinaryMessenger) {
-            MethodChannel(messenger, CHANNEL).setMethodCallHandler(PaymentsChannel(activity))
+            val channel = MethodChannel(messenger, CHANNEL)
+            val handler = PaymentsChannel(activity, channel)
+            channel.setMethodCallHandler(handler)
+            // Registered now, not only when a payment starts: if Android
+            // recreated the activity while the UPI app was in front, the answer
+            // must still reach this one (CashAlert does the same in onCreate).
+            runCatching {
+                CFPaymentGatewayService.getInstance().setSubscriptionCheckoutCallback(handler)
+            }
         }
     }
 }

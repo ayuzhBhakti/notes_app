@@ -34,7 +34,7 @@ Comments explain why, not what. The typical comment in this codebase records a d
 - Capture `Navigator.of(context)` and `ScaffoldMessenger.of(context)` **before** any async gap, then use the captured objects.
 - Do not await a Firestore write before popping a screen. Use `unawaited(...)` and report failure in `.then`. Awaiting would hang the screen while offline.
 - Do await a Supabase call, and show a busy state while it runs. It has no offline cache, so success is only known when the server answers.
-- Never navigate in response to sign-in, sign-out or an onboarding stage change. `AuthGate` and `AppGate` handle it.
+- Never navigate in response to sign-in, sign-out or a stage change. `AppGate` handles it.
 - Do not give `MaterialApp` a `home`, and do not move `DeepLinkService.start()` after `runApp`. Both break deep links; the reasons are in [09-deep-link-onboarding.md](09-deep-link-onboarding.md#receiving-the-direct-link).
 
 ## Data access

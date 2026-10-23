@@ -29,6 +29,9 @@ class PaywallScreen extends ConsumerStatefulWidget {
 class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   /// Null until the user picks; the first installed app is used until then.
   UpiApp? _picked;
+
+  /// The app the current payment goes through, for the processing screen.
+  UpiApp? _paying;
   late final AppLifecycleListener _lifecycle;
 
   @override
@@ -76,6 +79,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     // Nothing to pay with yet: the sheet says what to install.
     final UpiApp? app = selected ?? await _pickUpiApp(apps, null);
     if (app == null || !mounted) return;
+    setState(() => _paying = app);
     await ref.read(purchaseControllerProvider.notifier).subscribe(app);
   }
 
@@ -95,13 +99,44 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             .firstOrNull ??
         apps.firstOrNull;
     final _Accent accent = _Accent.of(config.accentColor, colors);
+    final CheckoutStage stage = ref.watch(checkoutStageProvider);
 
+    return PopScope(
+      // Back on the processing screen stops waiting (CashAlert's
+      // leaveProcessing); the paywall itself leads only forward.
+      canPop: stage == CheckoutStage.idle,
+      onPopInvokedWithResult: (bool didPop, Object? _) {
+        if (!didPop) ref.read(purchaseControllerProvider.notifier).leave();
+      },
+      child: Stack(
+        children: <Widget>[
+          _paywall(context, config, gateway, purchase, busy, apps, selected,
+              accent),
+          if (stage != CheckoutStage.idle)
+            Positioned.fill(child: _Processing(stage: stage, app: _paying)),
+        ],
+      ),
+    );
+  }
+
+  Widget _paywall(
+    BuildContext context,
+    RemoteConfig config,
+    PaymentGateway gateway,
+    AsyncValue<void> purchase,
+    bool busy,
+    List<UpiApp> apps,
+    UpiApp? selected,
+    _Accent accent,
+  ) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colors = theme.colorScheme;
     return Scaffold(
       body: SafeArea(
         child: Column(
           children: <Widget>[
             // No "Log out" here, by decision: the paywall leads only forward.
-            // The maintenance screen still has one.
+            // The web page screen still has one.
             const Padding(
               padding: EdgeInsets.fromLTRB(20, 16, 20, 0),
               child: Align(
@@ -258,18 +293,12 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                               fontWeight: FontWeight.w700,
                             ),
                           ),
-                          child: busy
-                              ? const SizedBox.square(
-                                  dimension: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : Text(
-                                  config.ctaText,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
+                          // The processing screen covers this while busy.
+                          child: Text(
+                            config.ctaText,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ),
                     ),
@@ -794,6 +823,75 @@ class _PurchaseError extends StatelessWidget {
         textAlign: TextAlign.center,
         style: theme.textTheme.bodyMedium?.copyWith(
           color: theme.colorScheme.error,
+        ),
+      ),
+    );
+  }
+}
+
+/// Over the whole paywall while a payment is prepared, the UPI app opens, or
+/// the mandate is confirmed (CashAlert's view_payment_processing.xml). Every
+/// wait behind it is capped at a few seconds; Back leaves it.
+class _Processing extends StatelessWidget {
+  const _Processing({required this.stage, required this.app});
+
+  final CheckoutStage stage;
+  final UpiApp? app;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colors = theme.colorScheme;
+    final String title = switch (stage) {
+      CheckoutStage.openingApp =>
+        app == null ? 'Opening your UPI app' : 'Opening ${app!.name}',
+      CheckoutStage.confirming => 'Confirming your payment',
+      _ => 'Getting your payment ready',
+    };
+    return Material(
+      color: theme.scaffoldBackgroundColor,
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              SizedBox.square(
+                dimension: 104,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: <Widget>[
+                    SizedBox.expand(
+                      child: CircularProgressIndicator(
+                        strokeWidth: 4,
+                        color: colors.primary,
+                      ),
+                    ),
+                    const BrandLogo(size: 56),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 28),
+              Semantics(
+                liveRegion: true,
+                child: Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'This takes a few seconds. Please keep the app open.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

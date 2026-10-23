@@ -94,42 +94,17 @@ class Analytics {
   }
 
   /// An onboarding link reached the app. [afterInstall]: it was a Play Store
-  /// link followed before the app was installed. [startedOnboarding] is false
-  /// when the device was already in the flow, so the link changed nothing.
-  void deepLinkOpened({
-    required bool afterInstall,
-    required bool startedOnboarding,
-  }) => _track('Deep Link Opened', <String, Object>{
-    'target': 'onboarding',
-    'after_install': afterInstall,
-    'started_onboarding': startedOnboarding,
-  });
+  /// link followed before the app was installed. For attribution only: since
+  /// 2026-10-22 every user signs in by phone, link or not.
+  void deepLinkOpened({required bool afterInstall}) =>
+      _track('Deep Link Opened', <String, Object>{
+        'target': 'onboarding',
+        'after_install': afterInstall,
+      });
 
   void appOpened() => _track('App Opened');
 
-  // ---- Sign-in ----
-
-  void signInViewed() => _track('Sign In Viewed');
-
-  void signInStarted() => _track('Sign In Started');
-
-  void signInSucceeded({required bool newUser}) {
-    _track('Sign In Succeeded', <String, Object>{'new_user': newUser});
-    // Meta counts registrations, not logins.
-    if (newUser) _metaCompleteRegistration('google');
-  }
-
-  void signInCancelled() => _track('Sign In Cancelled');
-
-  void signInFailed(String reason) =>
-      _track('Sign In Failed', <String, Object>{'reason': reason});
-
-  /// Ties this device's events, including those from before sign-in, to the
-  /// Firebase user. Safe to repeat on every app start with a live session.
-  void identify(String uid, {String? name, String? email}) => _client.send(
-    'identify',
-    <String, Object?>{'id': uid, 'name': name, 'email': email},
-  );
+  // ---- Sign-out ----
 
   /// Tracked before the reset, so the event still belongs to the person who
   /// signed out; the next person on this phone then starts clean.
@@ -189,6 +164,10 @@ class Analytics {
   void otpVerifyFailed(String reason) =>
       _track('OTP Verify Failed', <String, Object>{'reason': reason});
 
+  /// The store-review number signed in. No `identify`: it has no server
+  /// account, and every reviewer shares it.
+  void reviewAccountSignedIn() => _track('Review Account Signed In');
+
   void paywallViewed() => _track('Paywall Viewed');
 
   /// [upiApp] is the app's public name, such as "PhonePe".
@@ -244,7 +223,27 @@ class Analytics {
     <String, Object>{'plan_id': planId, 'reason': reason},
   );
 
-  void maintenanceViewed() => _track('Maintenance Viewed');
+  /// The subscriber's web page was shown. [hasUrl] is false when the backend
+  /// has no `webview_url`, and a "come back soon" screen showed instead.
+  /// The web page screen opened. [source] is the install's attributed source
+  /// and [webHost] the host of the page actually loaded (never the full URL):
+  /// together they make a misrouted source — landing on the wrong page, or on
+  /// none — visible in Mixpanel instead of failing silently.
+  void webPageViewed({
+    required bool hasUrl,
+    String? source,
+    String? webHost,
+  }) =>
+      _track('Web Page Viewed', <String, Object>{
+        'has_url': hasUrl,
+        if (source != null && source.isNotEmpty) 'install_source': source,
+        if (webHost != null && webHost.isNotEmpty) 'web_host': webHost,
+      });
+
+  /// The web page's main document failed to load. [reason] is the WebView's
+  /// error type, such as `hostLookup`; never the URL or a message.
+  void webPageFailed(String reason) =>
+      _track('Web Page Failed', <String, Object>{'reason': reason});
 
   // ----
 

@@ -2,82 +2,50 @@
 
 ## Screens and navigation
 
-Navigation uses `Navigator.push` with `MaterialPageRoute`. There are no named routes and no routing package.
+Every user signs in with a mobile number and an SMS code. There is no other way in: Google sign-in was removed on 2026-10-22.
 
 ```mermaid
 flowchart TD
-    Start([App start]) --> Init{Firebase and Google<br/>Sign-In initialised?}
+    Start([App start]) --> Init{Firebase initialised,<br/>device storage loaded?}
     Init -- no --> BootErr[Bootstrap error screen]
-    Init -- yes --> App{AppGate:<br/>arrived by an<br/>onboarding link?}
-    App -- yes --> Onboarding[Mobile number → code → paywall → maintenance]
-    App -- no --> Gate{AuthGate:<br/>auth state}
-    Gate -- loading --> Spinner[Spinner]
-    Gate -- error --> AuthErr[Error message]
-    Gate -- signed out --> SignIn[SignInScreen]
-    Gate -- signed in --> List[NotesListScreen]
-    SignIn -- Google sign-in succeeds --> Gate
-    List -- tap New note --> EditorNew[NoteEditorScreen, new]
-    List -- tap a row --> EditorEdit[NoteEditorScreen, edit]
-    List -- avatar --> Profile[ProfileScreen]
-    EditorNew -- save or back --> List
-    EditorEdit -- save, delete or back --> List
-    Profile -- Log out --> Gate
+    Init -- yes --> Gate{AppGate:<br/>saved stage}
+    Gate -- signIn --> Phone[PhoneScreen]
+    Phone -- Send code --> Otp[OtpScreen]
+    Otp -- Change number --> Phone
+    Otp -- code verified, not subscribed --> Paywall[PaywallScreen]
+    Otp -- code verified, subscribed --> Web[WebScreen]
+    Otp -- review number 9931133385 + 123456 --> Notes[NotesListScreen, local]
+    Paywall -- server confirms the mandate --> Web
+    Web -- Log out --> Phone
+    Web -- subscription ended --> Paywall
+    Notes -- Log out --> Phone
 ```
 
-`AppGate` is the single root route of the `MaterialApp`, and `AuthGate` is what it shows for the normal app. `NoteEditorScreen` and `ProfileScreen` are pushed on top.
+`AppGate` is the single root route of the `MaterialApp`. It renders from `onboardingControllerProvider` and never navigates; nothing is pushed on top except sheets and dialogs. The details of each screen, the backend and the review account are in [09-deep-link-onboarding.md](09-deep-link-onboarding.md).
 
-The onboarding interface, shown to a user who installed from a Play Store onboarding link, is described in [09-deep-link-onboarding.md](09-deep-link-onboarding.md). The rest of this document is the normal notes app.
+The notes screens (list, editor, profile) are reached only by the review number 9931133385, and store their notes on the device through `LocalNotesStore` (no Firebase). The Firestore-backed notes path those screens used to use is still in the code but unused. Their behaviour is described at the end of this document.
 
 ## Startup
 
 In [main.dart](../lib/main.dart):
 
 1. `WidgetsFlutterBinding.ensureInitialized()`.
-2. `DeepLinkService.start()`, so it sees incoming links before the framework's own handler.
+2. `DeepLinkService.start()`, so it sees incoming links before the framework's own handler. Links no longer change the screen; they are reported to analytics.
 3. The `App Opened` analytics event. Mixpanel and the Facebook SDK were already started by `MainActivity`, before any Dart ran.
-4. `Firebase.initializeApp` with `DefaultFirebaseOptions.currentPlatform`.
-5. `AuthService.initializeGoogleSignIn()`. This must run exactly once and be awaited before any other `GoogleSignIn.instance` call.
-6. `OnboardingStore.open()`, which loads the saved onboarding stage, phone session and settings.
-7. On the first launch only, `InstallReferrerService.fetch()` reads the Play Store install referrer, waiting at most 3 seconds. When it answers, the `Install Attributed` event is sent.
-8. `runApp`, with the link service, the store and the referrer passed in as provider overrides.
+4. `Firebase.initializeApp` with `DefaultFirebaseOptions.currentPlatform`. Nothing reachable uses Firebase now; it is kept while the notes screens are.
+5. `OnboardingStore.open()`, which loads the saved stage, phone session and settings.
+6. Until Play has given a settled answer, `InstallReferrerService.fetch()` reads the Play Store install referrer, waiting at most 3 seconds, and the `Install Attributed` event is sent. For attribution only.
+7. `runApp`, with the link service, the store and the referrer passed in as provider overrides.
 
-If step 4, 5 or 6 throws, the app runs `_BootstrapErrorApp` and shows "Evos couldn't start" with the reason. This is what happens on web and desktop, which have no Firebase options.
+If step 4 or 5 throws, the app runs `_BootstrapErrorApp` and shows "Evos couldn't start" with the reason. This is what happens on web and desktop, which have no Firebase options.
 
 Every screen and action after this reports an analytics event. They are listed in [10-analytics.md](10-analytics.md).
 
-## Sign in
+## Notes screens (review number only, local notes)
 
-```mermaid
-sequenceDiagram
-    actor User
-    participant Screen as SignInScreen
-    participant Ctrl as SignInController
-    participant Auth as AuthService
-    participant Google as GoogleSignIn
-    participant FB as FirebaseAuth
-    participant Gate as AuthGate
+The review number 9931133385 lands here. The screens read `localNotesStreamProvider` and write through `localNoteActionsProvider` (both backed by `LocalNotesStore` in `shared_preferences`), not Firestore, and there is no Firebase user. Notes are device-local: not synced, gone when the app's data is cleared. The descriptions below are otherwise accurate; where they mention Firestore, offline cache or `createdAt` server stamping, that applied to the old Firebase path, not the local store.
 
-    User->>Screen: Continue with Google
-    Screen->>Ctrl: signIn()
-    Ctrl->>Auth: signInWithGoogle()
-    Auth->>Google: authenticate()
-    Google-->>Auth: account with ID token
-    Auth->>FB: signInWithCredential(idToken)
-    FB-->>Gate: authStateChanges emits User
-    Gate->>User: NotesListScreen
-```
-
-Outcomes other than success:
-
-| Case | What the user sees |
-|------|--------------------|
-| User dismisses the Google sheet | Nothing on the first cancel in release builds. See the next row. |
-| Sign-in is "cancelled" repeatedly | A hint banner that the signing certificate is probably not registered in Firebase. It appears after 1 cancel in debug builds and 2 in release. An unregistered SHA-1 is reported by Android as a cancellation, so this is the only signal. |
-| Any other failure | An error banner with the message and hint from `describeError`. |
-
-The screen shows the Evos mark (the launcher icon, drawn), the tagline, three lines on what the app does, and the button at the bottom. The button is disabled and shows "Signing in…" while the request runs.
-
-## Notes list
+### Notes list
 
 [notes_list_screen.dart](../lib/screens/notes_list_screen.dart) watches `notesStreamProvider`. A pinned bar holds the large "Notes" title and, on the same row, the user's avatar, which opens Profile; "New note" is a floating button.
 
@@ -92,7 +60,7 @@ Each card ([note_tile.dart](../lib/widgets/note_tile.dart)) shows:
 - **Preview:** up to three lines of the body.
 - **Time:** "Just now", "5m ago", "3h ago", "2d ago", then a date such as "4 Mar". It reads "Saving…" while the server timestamp is unresolved.
 
-## Saving a note
+### Saving a note
 
 [note_editor_screen.dart](../lib/screens/note_editor_screen.dart) handles create (`note == null`) and edit. The note is passed in from the list, not re-fetched.
 
@@ -104,7 +72,7 @@ Each card ([note_tile.dart](../lib/widgets/note_tile.dart)) shows:
 
 Leaving with the back button discards the edits without asking.
 
-## Deleting a note
+### Deleting a note
 
 There are two entry points with the same result:
 
@@ -119,13 +87,9 @@ Then:
 
 The swipe never removes the row itself: `confirmDismiss` always returns false and the Firestore stream removes it. This avoids Flutter's "dismissed Dismissible is still part of the tree" assertion if the delete fails.
 
-## Profile and sign out
+### Profile and sign out
 
-[profile_screen.dart](../lib/screens/profile_screen.dart) shows the user's photo or initials, name and email on a violet card, then the user ID, then a full-width **Log out** button.
+[profile_screen.dart](../lib/screens/profile_screen.dart) shows a generic "Signed in" violet card (the review account has no name, email, photo or id), a card saying the notes are saved on this device, then a full-width **Log out** button.
 
 1. The user taps **Log out** and confirms in a dialog.
-2. `SignInController.signOut` signs out of Google (best effort) and then Firebase.
-3. `authStateChanges` emits null and `AuthGate` builds `SignInScreen`.
-4. If sign-out fails, a snackbar shows the error.
-
-The Profile route is not popped during sign-out. See [07-known-issues.md](07-known-issues.md).
+2. `OnboardingController.signOut` clears the review-account state (it never had a Firebase or Supabase session) and `AppGate` shows the mobile-number screen.

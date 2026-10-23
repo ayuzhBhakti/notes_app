@@ -114,17 +114,41 @@ void main() {
       }
     });
 
-    test('nothing stored means the normal app', () {
-      expect(OnboardingState.decode(null).isActive, isFalse);
+    test('keeps the review-account flag', () {
+      const OnboardingState review = OnboardingState(
+        stage: OnboardingStage.web,
+        reviewAccount: true,
+      );
+      expect(OnboardingState.decode(review.encode()).reviewAccount, isTrue);
+      expect(
+        OnboardingState.decode(
+          const OnboardingState(stage: OnboardingStage.web).encode(),
+        ).reviewAccount,
+        isFalse,
+      );
     });
 
-    test('a corrupt or unknown value falls back to the normal app', () {
-      expect(OnboardingState.decode('not json').isActive, isFalse);
-      expect(OnboardingState.decode('{"stage":"gone"}').isActive, isFalse);
+    test('nothing stored means the mobile-number screen', () {
+      expect(OnboardingState.decode(null).stage, OnboardingStage.signIn);
+    });
+
+    test('a corrupt or unknown value falls back to signing in', () {
+      expect(OnboardingState.decode('not json').stage, OnboardingStage.signIn);
+      expect(
+        OnboardingState.decode('{"stage":"gone"}').stage,
+        OnboardingStage.signIn,
+      );
+    });
+
+    test('the maintenance stage of older builds is the web page', () {
+      expect(
+        OnboardingState.decode('{"stage":"maintenance"}').stage,
+        OnboardingStage.web,
+      );
     });
 
     test('a stage saved by the details-form build signs in again', () {
-      for (final String old in <String>['details', 'member']) {
+      for (final String old in <String>['inactive', 'details', 'member']) {
         expect(
           OnboardingState.decode('{"stage":"$old","planId":"yearly"}').stage,
           OnboardingStage.signIn,
@@ -222,7 +246,7 @@ void main() {
         'cashfree_plan_id': 'zed_monthly',
         'cashfree_trial_amount': '5',
         'cashfree_recurring_amount': '499.50',
-        'maintenance_title': 'Back soon',
+        'webview_url': 'https://app.example.com/home',
       });
       expect(config.appName, 'Zed');
       expect(config.logoUrl, 'https://cdn.example.com/logo.png');
@@ -234,7 +258,7 @@ void main() {
       expect(config.analyticsPlanId, 'zed_monthly');
       expect(config.trialPriceLabel, '₹5');
       expect(config.recurringPriceLabel, '₹499.50');
-      expect(config.maintenanceTitle, 'Back soon');
+      expect(config.webUrl, 'https://app.example.com/home');
       // Follows the name when no plan name is sent.
       expect(config.planName, 'Zed Premium Monthly');
     });

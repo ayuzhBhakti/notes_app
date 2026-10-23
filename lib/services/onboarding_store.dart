@@ -43,6 +43,14 @@ class OnboardingStore {
 
   Future<void> saveConfig(String config) => _prefs.setString(_configKey, config);
 
+  static const String _notesKey = 'local_notes_v1';
+
+  /// The store-review account's notes, as JSON. That account has no Firebase
+  /// identity, so its notes live only on the device. See `LocalNotesStore`.
+  String? loadNotes() => _prefs.getString(_notesKey);
+
+  Future<void> saveNotes(String notes) => _prefs.setString(_notesKey, notes);
+
   static const String _referrerCheckedKey = 'install_referrer_checked';
 
   /// The install referrer never changes after install, so it is read once.
@@ -62,4 +70,15 @@ class OnboardingStore {
 
   Future<void> saveInstallReferrerAttempts(int attempts) =>
       _prefs.setInt(_referrerAttemptsKey, attempts);
+
+  static const String _installSourceKey = 'install_source_v1';
+
+  /// The install's attributed source (the referrer's `utm_source`, lowercased),
+  /// saved on the launch that read the referrer so it survives to the web-page
+  /// step many launches later. Null when nothing attributable is known. Picks
+  /// the per-source web page; see `webview_sources` and `fetchConfig`.
+  String? get installSource => _prefs.getString(_installSourceKey);
+
+  Future<void> saveInstallSource(String source) =>
+      _prefs.setString(_installSourceKey, source);
 }

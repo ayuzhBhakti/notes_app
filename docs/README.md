@@ -45,7 +45,7 @@ After every task:
 | A dependency, SDK version, Gradle or Xcode setting | [01-overview.md](01-overview.md), [05-setup-and-build.md](05-setup-and-build.md) |
 | A feature added or removed | [01-overview.md](01-overview.md), [03-app-flow.md](03-app-flow.md) |
 | A new pattern or a rule other code must follow | [06-conventions.md](06-conventions.md), [ai/AGENT_CONTEXT.md](ai/AGENT_CONTEXT.md) |
-| What data the app collects, an SDK or service that receives it, or anything a user sees in the notes app | `website/privacy-policy.html` and the other pages in `website/` that describe it |
+| What data the app collects, an SDK or service that receives it, or anything a user sees in the app | `website/privacy-policy.html` and the other pages in `website/` that describe it |
 | A CSS or JS file in `website/` | The `?v=` value in every `website/*.html` page ([05-setup-and-build.md](05-setup-and-build.md#website-upload-hostinger)) |
 | A bug fixed, or a new bug or gap found | [07-known-issues.md](07-known-issues.md) |
 

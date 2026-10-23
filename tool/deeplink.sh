@@ -4,8 +4,8 @@
 #
 #   ./tool/deeplink.sh            open the link (the app keeps its current state)
 #   ./tool/deeplink.sh --fresh    clear the app's data first, then open the link
-#   ./tool/deeplink.sh --reset    clear the app's data: back to the normal app
-#   ./tool/deeplink.sh --check    run the automated check of cold and warm links
+#   ./tool/deeplink.sh --reset    clear the app's data: back to the mobile-number screen
+#   ./tool/deeplink.sh --check    run the onboarding flow (needs a test-mode build)
 set -euo pipefail
 
 APP_ID="com.spacewire.evos"
@@ -15,7 +15,7 @@ ADB="${ANDROID_HOME:-$HOME/Library/Android/sdk}/platform-tools/adb"
 cd "$(dirname "$0")/.."
 
 if [[ "${1:-}" == "--check" ]]; then
-  exec ./tool/maestro.sh test .maestro/flows/deeplink_local.yaml
+  exec ./tool/maestro.sh test .maestro/flows/onboarding.yaml
 fi
 
 if ! "$ADB" get-state >/dev/null 2>&1; then

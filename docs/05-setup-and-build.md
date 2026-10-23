@@ -23,13 +23,11 @@ flutter build apk --debug
 
 ## Firebase configuration
 
-The app is configured in Dart, not through native config files.
+Firebase is initialised at start-up but nothing reachable uses it since Google sign-in was removed on 2026-10-22; it serves the notes code that is still in the app. It is configured in Dart, not through native config files.
 
 | Item | Where |
 |------|-------|
 | Firebase options (API key, app ID, project ID) | [lib/firebase_options.dart](../lib/firebase_options.dart), written by hand |
-| Google OAuth client IDs | `kWebClientId` and `kIosClientId` in [lib/services/auth_service.dart](../lib/services/auth_service.dart) |
-| iOS OAuth redirect | A `google-sign-in` URL type in [ios/Runner/Info.plist](../ios/Runner/Info.plist) |
 | Firestore rules | [firestore.rules](../firestore.rules), published by hand (see [04-data-model.md](04-data-model.md#publishing-rules)) |
 
 Things that are deliberately absent:
@@ -37,20 +35,6 @@ Things that are deliberately absent:
 - The `google-services` Gradle plugin is not applied. [android/app/google-services.json](../android/app/google-services.json) is in the repository but the build does not read it. It still describes the old package `com.spacewire.notes`; replace it once Firebase has the new one.
 - There is no `GoogleService-Info.plist` on iOS.
 - The FlutterFire CLI and the Firebase CLI are not installed.
-
-### Android signing certificate
-
-Google sign-in on Android identifies the app by package name plus the SHA-1 of its signing key. Each developer machine has its own debug key, and each one must be added in Firebase Console → Project settings → Your apps → Add fingerprint.
-
-```sh
-keytool -list -v -alias androiddebugkey \
-  -keystore ~/.android/debug.keystore \
-  -storepass android -keypass android | grep SHA1
-```
-
-If the fingerprint is missing, sign-in appears to be cancelled with no error. The app shows a hint banner for this case.
-
-Release builds are signed with the upload key; see [Release signing](#release-signing). Its SHA-1, and the Play app-signing key's SHA-1 once Play has one, must be added too, or sign-in fails in release and Play-installed builds.
 
 ### Release signing
 
@@ -120,9 +104,8 @@ Good: every `last-modified` date is the upload date. A file with an older date a
 ## Dependency rules
 
 - **Bump the three FlutterFire packages together.** `firebase_core`, `firebase_auth` and `cloud_firestore` are pinned to exact versions. Each ships an iOS Swift package that pins the Firebase iOS SDK to an exact version, and all three must agree or Swift Package Manager cannot resolve.
-- **Keep `google_sign_in_android` at 7.2.12 or later.** Earlier versions fail to compile under Kotlin Gradle Plugin 2.4.0.
 - **Mixpanel and the Facebook SDK are Gradle dependencies, not pub packages.** They are in [android/app/build.gradle.kts](../android/app/build.gradle.kts) and used from Kotlin. Do not add `mixpanel_flutter` or `facebook_app_events` beside them.
-- **Keep `google_sign_in_ios` at 6.3.0 or later.** Earlier versions do not handle the OAuth redirect under UIScene.
+- **The WebView and `url_launcher` are pub plugins,** unlike the payment and analytics SDKs. `webview_flutter_android` is a direct dependency because [web_screen.dart](../lib/screens/onboarding/web_screen.dart) sets Android-only options through it.
 
 ## Troubleshooting
 
@@ -178,21 +161,13 @@ The domain is not verified for the app. Approve it on the device with the comman
 
 Supabase refused the request, or a release build was made with the backend switched off: in a debug build the cause is logged with the tag `[evos]`. Usual causes: phone sign-in not enabled, the SMS hook not set or failing, or the Fast2SMS secrets missing.
 
-### Installing from the Play link does not start onboarding
+### `INSTALL_FAILED_UPDATE_INCOMPATIBLE` when installing a debug build
 
-The referrer only exists for installs made through Play. `adb install` and `flutter run` always report an organic install. Also check the link carries `referrer=flow%3Donboarding`, and that the app was not already installed.
+The phone has a build with another signature, such as one installed from Play. Uninstall it first (`adb uninstall com.spacewire.evos`), which deletes its data.
 
-### The app is stuck in the onboarding interface
+### The web page screen says "You're all set"
 
-That is by design once the link has been opened, in every build: no screen offers a way back. Clear the app's data (or `./tool/deeplink.sh --reset`): `adb shell pm clear com.spacewire.evos`.
-
-### Google asks for a lock screen during sign-in
-
-A managed (work) Google account can require a device lock screen before it may be used. That is the organisation's policy, not an app fault. Use a personal test account, or set the lock screen.
-
-### Sign-in does nothing or is "cancelled"
-
-The debug SHA-1 is not registered. See [Android signing certificate](#android-signing-certificate).
+The backend has no `webview_url`, or it is not https. Test-mode builds fetch no settings, so they always show this unless settings are seeded on the device ([09-deep-link-onboarding.md](09-deep-link-onboarding.md#setting-up-the-backend)).
 
 ### "You do not have permission to do that"
 

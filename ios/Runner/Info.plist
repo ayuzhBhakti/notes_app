@@ -24,22 +24,6 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
-	<key>CFBundleURLTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleTypeRole</key>
-			<string>Editor</string>
-			<key>CFBundleURLName</key>
-			<string>google-sign-in</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<!-- REVERSED_CLIENT_ID for the iOS OAuth client of notes-f36b3.
-				     Google Sign-In builds its redirect URI from this scheme and
-				     fails if it is not registered here. -->
-				<string>com.googleusercontent.apps.686456708333-f3jcg4edjglfpocpv69uvggappupp0h8</string>
-			</array>
-		</dict>
-	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

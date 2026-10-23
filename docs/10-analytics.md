@@ -52,12 +52,10 @@ The Facebook SDK adds the advertising-ID permission (`com.google.android.gms.per
 
 ## Who an event belongs to
 
-- **Before sign-in**, in either interface, events sit under an anonymous id that Mixpanel makes for the device.
-- **At Google sign-in, and on every later app start with a live session**, the app identifies the person by their Firebase user ID. Mixpanel links the anonymous id to it, so the events from before sign-in join the same person.
-- **When a phone sign-in code is verified** in the onboarding interface, the app identifies the person by their Supabase user ID. The phone number is never sent. Unlike the notes app, this is not repeated on later app starts.
-- **At log out**, in either interface, Mixpanel is reset, so the next person to sign in on that phone starts clean.
-
-The two interfaces use different account systems, so one human who uses both is two people in Mixpanel.
+- **Before sign-in**, events sit under an anonymous id that Mixpanel makes for the device.
+- **When a phone sign-in code is verified**, the app identifies the person by their Supabase user ID. The phone number is never sent. This is not repeated on later app starts.
+- **The review account (9931133385) is never identified.** It has no server or Firebase account, and every reviewer shares it; its events — including the notes events for its local notes — stay under the device's anonymous id.
+- **At log out**, Mixpanel is reset, so the next person to sign in on that phone starts clean.
 
 ## Properties on every event
 
@@ -76,26 +74,21 @@ The `install_` properties appear once Google Play has answered where the install
 
 ## Mixpanel events
 
-There are 29.
+There are 26.
 
 ### Install and links
 
 | Event | When it fires | Properties |
 |-------|---------------|------------|
 | `Install Attributed` | On the first launch where Google Play answers where the install came from. An empty answer is asked for again on up to 5 launches, and each asks sends the event again | The `install_` properties above. `install_referrer_raw`: Play's referrer exactly as received, cut to 100 characters (link parameters only). `referrer_click_recorded`: `false` when Play recorded no tap on a link. `referrer_attempt`: which launch asked, from 1 |
-| `Deep Link Opened` | An onboarding link reached the app: at launch, while running, or as the Play Store link the app was installed from | `target`: `onboarding`. `after_install`: `true` for the Play Store link. `started_onboarding`: `false` when the device was already in the flow, so the link changed nothing |
+| `Deep Link Opened` | An onboarding link reached the app: at launch, while running, or as the Play Store link the app was installed from. Since 2026-10-22 a link changes nothing on screen; this is for attribution | `target`: `onboarding`. `after_install`: `true` for the Play Store link |
 | `App Opened` | Every launch, before the first screen | none |
 
-### Sign-in
+### Sign-out
 
 | Event | When it fires | Properties |
 |-------|---------------|------------|
-| `Sign In Viewed` | The sign-in screen opens | none |
-| `Sign In Started` | "Continue with Google" is tapped | none |
-| `Sign In Succeeded` | Firebase accepted the Google account. The person is identified right after | `new_user`: `true` when this sign-in created the account |
-| `Sign In Cancelled` | The Google sheet was dismissed. An unregistered signing certificate looks the same (see [05-setup-and-build.md](05-setup-and-build.md#sign-in-does-nothing-or-is-cancelled)) | none |
-| `Sign In Failed` | Sign-in threw anything else | `reason` |
-| `Signed Out` | Log out succeeded in the notes app, or "Log out" was tapped in the onboarding interface. Mixpanel is reset right after | none |
+| `Signed Out` | "Log out" was tapped on the web page screen (or, in the unreachable notes interface, log out succeeded). Mixpanel is reset right after | none |
 
 ### Notes
 
@@ -125,13 +118,15 @@ None of these carry the mobile number or the sign-in code.
 | `OTP Request Failed` | The code could not be sent | `reason` |
 | `OTP Verified` | The server accepted the code. The person is identified just before | `new_user`: `true` when this number had no account |
 | `OTP Verify Failed` | The code was refused, or the check could not be made | `reason` |
+| `Review Account Signed In` | The review number 9931133385 was signed in with its fixed code, onto the local notes screen. Not identified, not a Meta registration | none |
 | `Paywall Viewed` | The paywall opens | none |
 | `UPI App Selected` | A different UPI app is chosen in the sheet | `upi_app`: the app's public name, such as `PhonePe` |
 | `Checkout Started` | "Try Now" is tapped with a UPI app chosen | `plan_id`, `upi_app` |
 | `Subscription Succeeded` | The server confirmed the AutoPay mandate | `plan_id`, `amount`, `currency`, `simulated` |
 | `Checkout Cancelled` | The person backed out of the UPI app | `plan_id` |
 | `Checkout Failed` | The payment failed, was still unconfirmed when the app stopped waiting, or could not be started | `plan_id`, `reason` |
-| `Maintenance Viewed` | The maintenance screen opens, including on every later launch | none |
+| `Web Page Viewed` | The web page screen opens, including on every later launch | `has_url`: `false` when there is no `webview_url` and "You're all set" shows instead. `install_source`: the install's attributed source, when known (omitted otherwise). `web_host`: the host of the page loaded, when any (never the full URL). Together they show a misrouted source — on the wrong page, or on none — in Mixpanel |
+| `Web Page Failed` | The page's main document failed to load (not a missing image or script) | `reason`: the WebView's error type, such as `hostLookup`, `timeout`, `connect`; `unknown` when it gives none. Never the URL |
 
 - `plan_id` is the backend's `cashfree_plan_id`, or `monthly` when that row is blank.
 - `amount` is what was authorised today, the trial price (₹3 by default), not the monthly price. Later monthly debits happen on the server and send no event from the app.
@@ -140,7 +135,7 @@ None of these carry the mobile number or the sign-in code.
 
 ### `reason` values
 
-A `reason` is a short code, never the error's message, which is free text and can contain an email address. It comes from `errorCode` in [errors.dart](../lib/utils/errors.dart): the Firebase error code (`permission-denied`, `network-request-failed`), the Google sign-in code (`interrupted`, `clientConfigurationError`), the backend's own failure code when it sends one (`cashfree_auth_failed`, `email_domain_missing` and the others listed in [09-deep-link-onboarding.md](09-deep-link-onboarding.md#payment)), otherwise the backend error kind (`network`, `wrongCode`, `tooManyRequests`, `countryNotSupported`, `signedOut`, `server`, `notConfigured`), the payment error kind (`declined`, `pending`, `upiAppUnavailable`, `unsupported`) or, for a decline, Cashfree's own code, or otherwise the name of the error's class (`StateError`).
+A `reason` is a short code, never the error's message, which is free text and can contain an email address. It comes from `errorCode` in [errors.dart](../lib/utils/errors.dart): the Firebase error code (`permission-denied`, `network-request-failed`), the backend's own failure code when it sends one (`cashfree_auth_failed`, `email_domain_missing` and the others listed in [09-deep-link-onboarding.md](09-deep-link-onboarding.md#payment)), otherwise the backend error kind (`network`, `wrongCode`, `tooManyRequests`, `countryNotSupported`, `signedOut`, `server`, `notConfigured`), the payment error kind (`declined`, `pending`, `upiAppUnavailable`, `unsupported`) or, for a decline, Cashfree's own code, or otherwise the name of the error's class (`StateError`).
 
 ## Profile properties
 
@@ -148,7 +143,6 @@ Set on the person, not on events.
 
 | Property | When |
 |----------|------|
-| `$name`, `$email` | At Google sign-in and each app start with a session, from the Google account |
 | `install_source`, `install_medium`, `install_organic`, `install_campaign`, `install_content`, `install_term` | Set once and never overwritten, so a reinstall keeps the first source |
 
 A person identified by phone sign-in has a profile with the install properties only: no name, email or phone number is set.
@@ -158,7 +152,7 @@ A person identified by phone sign-in has a profile with the install properties o
 | Event | When it fires | Parameters |
 |-------|---------------|------------|
 | App install, app open (automatic) | Sent by the SDK itself once it is configured | The SDK's own |
-| `fb_mobile_complete_registration` | A Google sign-in, or a verified phone code, that created the account | `fb_registration_method`: `google`, `phone` |
+| `fb_mobile_complete_registration` | A verified phone code that created the account | `fb_registration_method`: `phone` |
 | `fb_mobile_initiated_checkout` | "Try Now" is tapped with a UPI app chosen | `fb_content_id` (the plan), `fb_currency`, and the price as the value |
 | `fb_mobile_purchase` and `Subscribe` | A **real** payment succeeded | `fb_content_id`, `fb_currency`, the price |
 
@@ -166,26 +160,25 @@ A person identified by phone sign-in has a profile with the install properties o
 
 ## The funnels
 
-Onboarding, for a person who installs from an onboarding Play Store link:
+Every new user:
 
-`Install Attributed` → `App Opened` → `Deep Link Opened` → `Phone Entry Viewed` → `OTP Requested` → `OTP Verified` → `Paywall Viewed` → `Checkout Started` → `Subscription Succeeded` → `Maintenance Viewed`
+`Install Attributed` → `App Opened` → `Phone Entry Viewed` → `OTP Requested` → `OTP Verified` → `Paywall Viewed` → `Checkout Started` → `Subscription Succeeded` → `Web Page Viewed`
 
-Notes, for a new user:
-
-`Install Attributed` → `App Opened` → `Sign In Viewed` → `Sign In Started` → `Sign In Succeeded` → `Notes List Viewed` → `Note Editor Opened` → `Note Created`
+`Deep Link Opened` comes after `App Opened` when the install came from an onboarding link. Filter out `Review Account Signed In` sessions to keep store reviewers out of the funnel.
 
 ## What has been checked
 
 - **With the real keys (2026-10-21, test phone, test-mode debug build), both services accepted every event sent.** Checked in logcat, not inside Mixpanel or Events Manager:
   - Facebook confirmed the App ID and client token belong together (a Graph API read answered with the app name "evos").
-  - Mixpanel: `App Opened`, `Install Attributed`, `Deep Link Opened`, `Phone Entry Viewed`, `OTP Requested`, `OTP Verified`, `Paywall Viewed`, `Checkout Started`, `Subscription Succeeded` (`simulated: true`), `Maintenance Viewed`, `Signed Out`, and the `identify` profile update. `/track` and `/engage` both answered `status: 1`.
+  - Mixpanel: `App Opened`, `Install Attributed`, `Deep Link Opened`, `Phone Entry Viewed`, `OTP Requested`, `OTP Verified`, `Paywall Viewed`, `Checkout Started`, `Subscription Succeeded` (`simulated: true`), `Maintenance Viewed` (since replaced by `Web Page Viewed`), `Signed Out`, and the `identify` profile update. `/track` and `/engage` both answered `status: 1`.
   - Facebook: `fb_sdk_initialize`, `MOBILE_APP_INSTALL` (first launch after clearing data), `fb_mobile_activate_app` and `fb_mobile_initiated_checkout`, each answered `success: true`. `metaSubscribe` was correctly skipped for the simulated payment. `metaCompleteRegistration` did not fire, because test mode's `debug-user` is never a new user.
   - On the first launch after install the SDK logs `GraphRequest can't be used when Facebook SDK isn't fully initialized` about five times (see [05-setup-and-build.md](05-setup-and-build.md#logcat-errors-that-are-expected)). Harmless: the same launch then fetched the SDK settings and sent the install.
 - Debug builds log every Facebook request and App Events flush (tags `FacebookSDK.Request`, `FacebookSDK.Response`, `FacebookSDK.AppEvents`), as they already did for Mixpanel (`MixpanelAPI.*`). Logcat cuts long lines at about 4 KB, so a Mixpanel batch's event list looks truncated; the `raw size` line shows the whole batch went.
 - Events still queued when the app is killed are kept on the device and sent on the next launch. Maestro's `clearState` deletes them, so a flow that ends with it loses its last minute of events.
 - With throwaway dummy keys (2026-10-13, test phone), the earlier onboarding flow reached both SDKs. **The events were then changed** (the details-form events were replaced by the phone and code events) and that check has not been repeated: the current onboarding events are covered by widget tests in [analytics_test.dart](../test/analytics_test.dart) only.
 - A real (not simulated) `Subscription Succeeded`, and Facebook's purchase events, have never been sent: no real payment has been made.
-- **The six sign-in events, the eight notes events, `identify` and the reset on log out have never run**, on a phone or in a test. Google sign-in is blocked on the test phone ([07-known-issues.md](07-known-issues.md)), and the signed-in screens have no widget tests.
+- **`Web Page Viewed`, `Web Page Failed` and `Review Account Signed In` (2026-10-22) have not run on a phone.** The first and last are covered by widget tests; `Web Page Failed` needs a real WebView.
+- **The notes events run only for the review account's local notes** (anonymous id). They have not been checked on a phone.
 
 ## Known gaps
 
@@ -193,7 +186,7 @@ Notes, for a new user:
 - Debug builds will report to the same Mixpanel project and Facebook app as released builds, so test runs will be mixed in with real users. In test mode (a debug build with no Supabase project) `OTP Verified` fires for the stand-in account `debug-user`, which every such phone then shares in Mixpanel.
 - If Google Play cannot answer on the first launch, the app asks again on each later launch with no limit, and `Install Attributed` is sent whenever it first answers. If Play answers with an empty referrer, the app asks again on up to 5 launches in all, sending `Install Attributed` each time. A phone with no Play Store never sends it and never gets the `install_` properties.
 - An install that happened before the Mixpanel token was set keeps its `install_` properties (they are stored on the phone), but its `Install Attributed` event is lost.
-- Screen-view events fire when the screen is created. `Maintenance Viewed` therefore fires on every launch of a subscribed phone, and `Sign In Viewed` on every launch of a signed-out one. Count unique users, not totals.
+- Screen-view events fire when the screen is created. `Web Page Viewed` therefore fires on every launch of a subscribed phone, and `Phone Entry Viewed` on every launch of a signed-out one. Count unique users, not totals.
 - There is no event for a mobile number that fails validation, none for an error on the notes list, and none when a subscription lapses and the person is returned to the paywall.
 - Renewals, failed debits and cancellations are known only to the server. CashAlert sends these to Mixpanel from its webhook; this backend does not.
 - No consent screen. The Facebook SDK collects the advertising ID as soon as it is configured. Check what the markets the app ships to require before adding real keys.

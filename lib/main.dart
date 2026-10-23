@@ -1,4 +1,3 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,7 +8,6 @@ import 'models/install_source.dart';
 import 'providers.dart';
 import 'screens/app_gate.dart';
 import 'services/analytics.dart';
-import 'services/auth_service.dart';
 import 'services/deep_link_service.dart';
 import 'services/install_referrer_service.dart';
 import 'services/onboarding_store.dart';
@@ -34,12 +32,10 @@ Future<void> main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    // Exactly once, awaited, before any other GoogleSignIn.instance call.
-    await AuthService.initializeGoogleSignIn();
     onboardingStore = await OnboardingStore.open();
 
     // Until Play has given an answer that settles it (see isReferrerFinal).
-    // Awaited so the very first frame is already the right interface; a
+    // For attribution only: everyone signs in by phone whatever it says. A
     // failed read is left unmarked and tried again on the next launch.
     if (!onboardingStore.installReferrerChecked) {
       final InstallReferrer? answer =
@@ -51,17 +47,20 @@ Future<void> main() async {
         } else {
           await onboardingStore.saveInstallReferrerAttempts(attempt);
         }
+        final InstallSource source = InstallSource.parse(answer.referrer);
         analytics.installAttributed(
-          InstallSource.parse(answer.referrer),
+          source,
           referrer: answer.referrer,
           clickRecorded: answer.clickSeconds > 0,
           attempt: attempt,
         );
-        // A referrer that arrives on a later launch must not pull someone
-        // who has since signed in to their notes into onboarding.
-        if (attempt == 1 || !AuthService(FirebaseAuth.instance).isSignedIn) {
-          installReferrer = answer.referrer;
+        // Remembered for the web-page step, which runs many launches later and
+        // no longer has the referrer. Anything but the unattributed default is
+        // worth keeping; an unmatched source just falls back to the global URL.
+        if (source.source != InstallSource.sourceUnknown) {
+          await onboardingStore.saveInstallSource(source.source.toLowerCase());
         }
+        installReferrer = answer.referrer;
       }
     }
   } catch (error) {

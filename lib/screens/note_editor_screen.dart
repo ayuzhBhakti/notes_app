@@ -54,7 +54,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     // can still surface a failure.
     final NavigatorState navigator = Navigator.of(context);
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
-    final NoteActions actions = ref.read(noteActionsProvider.notifier);
+    final LocalNoteActions actions = ref.read(localNoteActionsProvider.notifier);
 
     // Deliberately not awaited before popping. Firestore commits to the local
     // cache immediately — the note is already in the list, flagged "Saving…" —
@@ -70,7 +70,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
           SnackBar(
             content: Text(
               describeError(
-                ref.read(noteActionsProvider).error ?? 'Save failed',
+                ref.read(localNoteActionsProvider).error ?? 'Save failed',
               ).message,
             ),
           ),
@@ -87,7 +87,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
 
     final NavigatorState navigator = Navigator.of(context);
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
-    final NoteActions actions = ref.read(noteActionsProvider.notifier);
+    final LocalNoteActions actions = ref.read(localNoteActionsProvider.notifier);
 
     unawaited(
       actions.delete(note.id).then((bool ok) {
@@ -97,7 +97,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
             SnackBar(
               content: Text(
                 describeError(
-                  ref.read(noteActionsProvider).error ?? 'Delete failed',
+                  ref.read(localNoteActionsProvider).error ?? 'Delete failed',
                 ).message,
               ),
             ),

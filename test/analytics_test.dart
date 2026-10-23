@@ -104,14 +104,11 @@ void main() {
       });
     });
 
-    test('only a new account is a registration for Meta', () {
-      final Recorder returning = Recorder();
-      Analytics(returning).signInSucceeded(newUser: false);
-      expect(returning.otherMethods, isEmpty);
-
-      final Recorder first = Recorder();
-      Analytics(first).signInSucceeded(newUser: true);
-      expect(first.otherMethods, <String>['metaCompleteRegistration']);
+    test('the review account is neither identified nor a registration', () {
+      final Recorder recorder = Recorder();
+      Analytics(recorder).reviewAccountSignedIn();
+      expect(recorder.events, <String>['Review Account Signed In']);
+      expect(recorder.otherMethods, isEmpty);
     });
 
     test('a verified code identifies by account id, and only a new account '
@@ -176,10 +173,10 @@ void main() {
   group('events sent by the app', () {
     setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
 
-    testWidgets('an ordinary launch reports the sign-in screen only',
+    testWidgets('an ordinary launch reports the mobile-number screen only',
         (tester) async {
       final Harness h = await launch(tester);
-      expect(h.recorder.events, <String>['Sign In Viewed']);
+      expect(h.recorder.events, <String>['Phone Entry Viewed']);
     });
 
     testWidgets('the whole onboarding funnel, in order', (tester) async {
@@ -199,12 +196,14 @@ void main() {
         'Paywall Viewed',
         'Checkout Started',
         'Subscription Succeeded',
-        'Maintenance Viewed',
+        'Web Page Viewed',
       ]);
       expect(h.recorder.properties('Deep Link Opened'), <String, Object?>{
         'target': 'onboarding',
         'after_install': false,
-        'started_onboarding': true,
+      });
+      expect(h.recorder.properties('Web Page Viewed'), <String, Object?>{
+        'has_url': false,
       });
       expect(h.recorder.properties('OTP Requested'), <String, Object?>{
         'resend': false,
@@ -378,7 +377,7 @@ void main() {
       await signIn(tester);
       await tapTryNow(tester);
 
-      expect(h.recorder.events.last, 'Maintenance Viewed');
+      expect(h.recorder.events.last, 'Web Page Viewed');
       expect(h.recorder.events, isNot(contains('Subscription Succeeded')));
       expect(h.recorder.otherMethods, isNot(contains('metaSubscribe')));
     });
@@ -388,6 +387,8 @@ void main() {
       final Harness h = await launch(tester, coldStartLink: onboardingLink);
       await signIn(tester);
       await tapTryNow(tester);
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Log out'));
       await tester.pumpAndSettle();
 

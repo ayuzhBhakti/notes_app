@@ -88,8 +88,10 @@ abstract class EvosBackend {
   /// Never throws: the device is signed out whatever the server says.
   Future<void> signOut();
 
-  /// The public rows of `app_config`, as `key -> value`.
-  Future<Map<String, String>> fetchConfig();
+  /// The public rows of `app_config`, as `key -> value`. When [installSource]
+  /// names a source with a `webview_sources` row, its URL overrides the global
+  /// `webview_url`; otherwise the global one is returned unchanged.
+  Future<Map<String, String>> fetchConfig(String? installSource);
 
   Future<bool> hasActiveSubscription();
 
@@ -182,16 +184,51 @@ class SupabaseEvosBackend implements EvosBackend {
   }
 
   @override
-  Future<Map<String, String>> fetchConfig() => _guard(() async {
+  Future<Map<String, String>> fetchConfig(String? installSource) =>
+      _guard(() async {
         // Row-level security returns the public rows only, whatever is asked.
         final List<Map<String, dynamic>> rows =
             await _client.from('app_config').select('key, value');
-        return <String, String>{
+        final Map<String, String> config = <String, String>{
           for (final Map<String, dynamic> row in rows)
             if (row['key'] is String && row['value'] is String)
               row['key'] as String: row['value'] as String,
         };
+        final String? source = installSource?.trim().toLowerCase();
+        // 'unknown' is the parser's word for an unattributed install.
+        if (source != null && source.isNotEmpty && source != 'unknown') {
+          await _applySourceWebUrl(config, source);
+        }
+        return config;
       });
+
+  /// Overrides `webview_url` with the active `webview_sources` row for [source],
+  /// if any. Best-effort: a missing table (migration not pushed yet), no row,
+  /// or any error leaves the global URL in place. A per-source page is an
+  /// enhancement and must never cost the rest of the settings, so this is kept
+  /// out of `_guard` and swallows its own errors.
+  Future<void> _applySourceWebUrl(
+    Map<String, String> config,
+    String source,
+  ) async {
+    try {
+      final List<Map<String, dynamic>> matches = await _client
+          .from('webview_sources')
+          .select('webview_url')
+          .eq('source', source)
+          // The RLS policy already hides inactive rows; this is a second guard
+          // so a loosened policy could never serve a disabled partner URL.
+          .eq('is_active', true)
+          .limit(1);
+      final Object? url =
+          matches.isNotEmpty ? matches.first['webview_url'] : null;
+      if (url is String && url.trim().isNotEmpty) {
+        config['webview_url'] = url.trim();
+      }
+    } catch (_) {
+      // Keep the global webview_url.
+    }
+  }
 
   @override
   Future<bool> hasActiveSubscription() => _guard(() async {
@@ -362,7 +399,8 @@ class UnconfiguredEvosBackend implements EvosBackend {
   Future<void> signOut() => _store.clearSession();
 
   @override
-  Future<Map<String, String>> fetchConfig() async => throw _failure;
+  Future<Map<String, String>> fetchConfig(String? installSource) async =>
+      throw _failure;
 
   @override
   Future<bool> hasActiveSubscription() async => throw _failure;

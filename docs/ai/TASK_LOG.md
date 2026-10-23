@@ -17,6 +17,158 @@ One entry per completed task, newest first. Keep entries short: what changed, wh
 
 ---
 
+## 2026-10-23 — Version bump to 1.0.2+3 and signed release bundle (NOT uploaded)
+
+**Request:** bump the version and build for Play; make sure everything is correct.
+**Changes:** `pubspec.yaml` 1.0.1+2 -> 1.0.2+3 (versionCode 3; live Play is 2).
+**Verified:** `flutter analyze` clean; 143 tests pass; `flutter build appbundle` wrote a signed `.aab`; cert = upload key `C3:40:52…`, package `com.spacewire.evos`, versionName 1.0.2; keystore files untouched.
+**Readiness — NOT ready to publish as-is (flagged to owner):**
+1. **Payment: owner confirmed working on 2026-10-23** (not verified in this environment — the review number skips to notes and a normal number needs a real OTP). Taken as cleared on the owner's word.
+2. **Review-account cloaking.** `9931133385`/`123456` sees local notes; everyone else sees the paywall/web page. Showing reviewers different content than users is a Play policy violation that commonly causes removal. Owner has accepted the risk (rule 5); re-flagged at submission.
+3. **Store listing, screenshots and `website/` still describe the notes app**, not phone sign-in/subscription/web page. Mismatch can cause rejection and misleads users.
+4. This bundle replaces the live Google-sign-in notes app with a completely different flow.
+**Docs updated:** `docs/ai/AGENT_CONTEXT.md`, `docs/ai/TASK_LOG.md`.
+**Follow-ups:** before a *public* release, update the store listing/screenshots/website to describe phone sign-in + subscription + web page, and decide on the cloaking risk. Recommend an Internal testing track first. Upload is the owner's manual Play Console step (no credentials/tooling here).
+
+---
+
+## 2026-10-23 — Per-source web page: end-to-end verification on device + live backend
+
+**Request:** two rows added to `webview_sources`; do full end-to-end testing.
+**Rows (live):** `filmyface` and `facebook` → `https://www.instagram.com/?hl=en`; global `app_config.webview_url` → `https://subtle-sopapillas-a755d8.netlify.app`.
+**Verified (nothing changed in code; this is QA):**
+- **Data layer, app's exact anon queries (curl):** `source=eq.filmyface&is_active=eq.true` and `facebook` → instagram; `google-play`, `whatsapp`, `FilmyFace` → `[]` (fall back; case-sensitive, so the app's lowercasing matters). RLS: anon reads active rows only; anon INSERT 401.
+- **Live resolution on the device** (real-backend debug build, real network, source seeded via `run-as`, read back from `evos_config_v1`): `filmyface` → instagram, `facebook` → instagram, `google-play` → netlify (global). Proves the real `SupabaseEvosBackend.fetchConfig` two-query merge end-to-end. (`flutter test` can't hit the network — `TestWidgetsFlutterBinding` forces HTTP 400 — so this had to be on device.)
+- **WebView render:** with `filmyface` resolved, the web screen loaded `instagram.com` inside the Evos app bar (screenshot). Reached by seeding stage=web + a session (real sign-in needs a real number; payment→web is still blocked by the incomplete Cashfree setup, a pre-existing gap).
+- **Analytics (the review fix) live:** `Web Page Viewed` fired to Mixpanel with `install_source: filmyface`, `web_host: www.instagram.com`, `has_url: true` (logcat `status`/Mixpanel accepted).
+- `flutter analyze` clean; 143 tests pass.
+**Notes/risks confirmed:** a third-party page (instagram) renders full-screen inside the Evos chrome — the brand/trust point from the review, shown in practice. `adb`/organic installs save source `google-play` (not `unknown`), which correctly falls back.
+**Docs updated:** `docs/ai/TASK_LOG.md`, `docs/ai/AGENT_CONTEXT.md`.
+**Follow-ups:** the only unproven production path is real payment → web (blocked by Cashfree setup, unrelated to this feature). The phone now has the debug build with data cleared; reinstall the Play build if the released one is wanted back.
+
+---
+
+## 2026-10-22 — Per-source web page: review fixes (visibility, is_active guard, drop cached provider)
+
+**Request:** fix the review's two medium risks and the low one.
+**Changes:**
+- `analytics.dart` / `web_screen.dart`: `Web Page Viewed` now carries `install_source` and `web_host` (host only, never the URL), so a source landing on the wrong page or none is visible in Mixpanel instead of failing silently.
+- `evos_backend.dart`: the `webview_sources` lookup adds `.eq('is_active', true)` as a second guard, so a loosened RLS policy could never serve a disabled partner URL.
+- `providers.dart`: removed `installSourceProvider`; `refresh()` reads `onboardingStoreProvider.installSource` directly, so the value is never a stale cached one (it is written in main() before runApp).
+- Test: the tagged-source web-page test now also asserts `Web Page Viewed` carries `install_source`.
+**Verified:** `flutter analyze` clean; 143 tests pass; no references to the removed provider remain.
+**Docs updated:** `docs/10-analytics.md`, `docs/ai/AGENT_CONTEXT.md`.
+**Follow-ups:** optional `CHECK (source = lower(source))` / `webview_url <> ''` constraints on `webview_sources` would need a new migration pushed (go-ahead). The remaining review test-gaps (main.dart save path, 'unknown' skip, best-effort swallow) are not yet covered.
+
+---
+
+## 2026-10-22 — Per-source web page: `webview_sources` table, URL chosen by install source
+
+**Request:** the WebView URL should depend on the deep-link `install_source` (e.g. `filmyface` loads the page saved for filmyface). Plan it, then build.
+**Changes:**
+- `supabase/migrations/20261022130000_webview_sources.sql` (new): table `webview_sources(source pk, webview_url, is_active)`, RLS public-read on active rows, SELECT grant, no write policy. **Not pushed.**
+- `OnboardingStore`: `installSource` / `saveInstallSource` (`install_source_v1`), so the source survives to the web step.
+- `main.dart`: saves the parsed source (lowercased, unless `unknown`) after reading the referrer.
+- `providers.dart`: `installSourceProvider`; `RemoteConfigController.refresh()` passes it to `fetchConfig`.
+- `evos_backend.dart`: `fetchConfig(String? installSource)`; `SupabaseEvosBackend` does one filtered `webview_sources` read and overrides `webview_url`, best-effort (swallows errors so a missing table never loses the rest of the config). `UnconfiguredEvosBackend` matches the signature.
+- `WebScreen`, `RemoteConfig`: unchanged — `webUrl` is just the (possibly overridden) `webview_url`.
+- Tests: `FakeBackend.webUrlBySource` + `fetchConfig(source)`; `launch(installSource:)`; two web-page tests (tagged source gets its page; no source gets the global one).
+**Why:** decided with the owner — client filtered-select (migration only, no edge function), scope limited to the web URL. Best-effort lookup lets the app ship before the migration is pushed.
+**Verified:** `flutter analyze` clean; 143 tests pass (was 141). The `SupabaseEvosBackend` two-query merge has no unit test (no live client, like the rest of that class); the client wiring is covered through `FakeBackend`. **Migration pushed to the live project on owner's go-ahead** (`supabase db push`, only `20261022130000` was pending); verified over REST with the app's anon key: table reads `[]`, a filtered `source=eq.filmyface` read returns `[]`, an anon INSERT is rejected 401. No rows yet; not run on a phone.
+**Docs updated:** `docs/09-deep-link-onboarding.md`, `docs/ai/AGENT_CONTEXT.md`.
+**Follow-ups:** fill `webview_sources` rows (and the global `webview_url`) in the Table Editor; bump the version and upload a build; then verify on a phone with a tagged referrer link (personal-account phone only).
+
+---
+
+## 2026-10-22 — Play referrer: cause found (managed account on the phone)
+
+**Request:** the owner found the cause and confirmed the Play Store link works; the link page is not needed.
+**Changes:** `web_links/onboarding/index.html` reverted to its previous version. `assetlinks.json` keeps Play's signing key (without it the HTTPS link can never open an app installed from Play).
+**Why:** Play checks every Google account on the device and resets the install referrer when any of them is enterprise-managed, even if a personal account is the active one in Play. The test phone's only account was a Workspace account (`bhaktilok.app`), so every install read `utm_source=(not%20set)&utm_medium=(not%20set)` with the click recorded. The app's code was never at fault.
+**Verified:** the owner removed the Workspace account and confirmed the link opens onboarding. On the phone: only a `@gmail.com` account now; Evos 1.0.1 installed by Play at 17:53 IST.
+**Docs updated:** `docs/ai/AGENT_CONTEXT.md`, `docs/07-known-issues.md`, `docs/09-deep-link-onboarding.md`.
+**Follow-ups:** users with a work account on their phone will never get the referrer; Mixpanel `install_referrer_raw` = `(not%20set)` with `referrer_click_recorded: true` identifies them.
+
+---
+
+## 2026-10-22 — Onboarding link: App Links page that works when Play drops the referrer
+
+**Request:** research the Install Referrer and deep-link docs again and make the onboarding link work using Google's own mechanisms, no third-party SDK.
+**Changes:** `web_links/.well-known/assetlinks.json` lists Google Play's app signing key (`4A:2D:5C:…`, read from the Play install with `pm get-app-links`), the upload key (`C3:40:52:…`, from the `.aab`) and the debug key; before, only the debug key, so a Play install could never verify the domain (state 1024 on the test phone). `web_links/onboarding/index.html`: one "Get Evos" button, a Chrome intent URL with the package and `S.market_referrer` (opens the app if installed, otherwise Play with the referrer), and text asking to come back and tap again after installing.
+**Why:** the official pages (installreferrer overview, library, AIDL reference, release notes; App Links create-deeplinks) say nothing about what Play puts in the referrer or about "(not set)". Opening the Play link through Chrome also gave notes (17:39 IST), after Gmail, adb, full-UTM and `market://` had. A Chrome intent link is deterministic whatever Play does with the referrer.
+**Verified:** page served from this Mac to the test phone's Chrome (`adb reverse`), live Play build 1.0.1: installed, the button opened Evos on "Welcome to Evos"; uninstalled, the button opened Play's Evos page (`market://details` via `MarketDeepLinkHandlerActivity`), Play installed it, back on the page the button opened onboarding. Not deployed: `notes-f36b3.web.app` still answers 404, the Firebase CLI and Node are not installed, and verification of the domain by Android (autoVerify) has therefore not run.
+**Docs updated:** `docs/09-deep-link-onboarding.md`.
+**Follow-ups:** owner's go-ahead to deploy `web_links/` (install the Firebase CLI, `firebase login` by the owner, `firebase deploy --only hosting`), then re-verify on the phone and test from a WhatsApp/Gmail tap. Campaign link becomes `https://notes-f36b3.web.app/onboarding`. Whether `S.market_referrer` reached the app: Mixpanel "Install Attributed" of 17:41 IST.
+
+---
+
+## 2026-10-22 — Sign-in screen: stop the carousel from rearranging the layout after it loads
+
+**Request:** on the sign-in screen the image carousel loads after a moment and shifts the widgets, which looks odd; fix the placement.
+**Cause:** `remoteConfigSettledProvider` reports settled as soon as a config saved by an earlier launch exists. If that saved config had no slides but the network refresh then returned some, `hasSlides` flipped false→true after the first frame, swapping the whole layout branch (brand header in, heading from headlineMedium to headlineSmall, carousel pushed above the form) — a visible jump.
+**Change:** `phone_screen.dart` now freezes the carousel-or-not decision the first time the form is shown (`_useCarousel ??= hasSlides`) and drives all layout off that, not live `hasSlides`. Slides that arrive after the form is on screen no longer restructure it; they show on the next launch. The warming/readiness logic still uses live slides. Not ported from Clenio (its phone screen was unchanged); specific to this app.
+**Verified:** `flutter analyze`: no issues. `flutter test`: 141 passed, including a new regression test ("slides arriving after the form is shown do not rearrange it"). `flutter build apk --debug`: built.
+**Docs updated:** `docs/02-architecture.md`, `09-deep-link-onboarding.md`, `ai/AGENT_CONTEXT.md`, this log.
+**Follow-ups:** none. (A first-ever launch whose saved config lacks slides shows the carousel only from the second launch — accepted, to avoid the jump.)
+
+---
+
+## 2026-10-22 — Paywall: fix the stuck loading state when Try Now is left without paying (ported from Clenio)
+
+**Request:** apply the paywall loading-state fix done in the Clenio app — tapping Try Now and coming back without paying must not leave the paywall stuck loading.
+**Cause:** the Kotlin `startSubscription` held the `MethodChannel.Result` open until Cashfree's callback, and the Dart gateway then polled for up to ~24 s. Cashfree does not always call back when the user returns without paying, so the paywall could spin indefinitely with no way out.
+**Changes (ported from Clenio's working tree; its unrelated UPI-icon change was left out):**
+- `PaymentsChannel.kt`: `startSubscription` answers `success(null)` as soon as the UPI app opens; Cashfree's callbacks are sent to Dart as a separate `cashfreeResult` call (`onSubscriptionVerify`→ok, `onSubscriptionFailure`→code). Removed the held `pending` Result and `already_in_progress`. The callback is registered at `register()` too, in case Android recreated the activity.
+- `payment_gateway.dart`: added `CheckoutStage`, `onStage`, `leave()`, `checkLastAttempt()`, a `PaymentsPlatform` seam (`MethodChannelPaymentsPlatform` with a `results` stream and `nextResume()`), and `CashfreeResult`. Rewrote `CashfreePaymentGateway`: a `leave` completer, a callback/resume race with a grace window, capped waits (`holdLimit` 6 s, `callbackGrace` 1.5 s), and a background `checkLastAttempt` (`backgroundLimit` 60 s). Kept `EvosBackend.verifySubscription` returning `bool` (did not adopt Clenio's `MandateState`). Added `PaymentError.slowNetwork`.
+- `providers.dart`: `PurchaseController` passes `onStage`, uses `_finish`/`_succeeded`/`_checkLater`, exposes `leave()`; new `CheckoutStageController`/`checkoutStageProvider`.
+- `paywall_screen.dart`: a full-screen `_Processing` overlay driven by `checkoutStageProvider`, wrapped in `PopScope` so Back calls `leave()`; removed the CTA button spinner. `_paying` tracks the app for the overlay text.
+- `errors.dart`: message for `PaymentError.slowNetwork`.
+- Tests: `FakeGateway` implements the new interface (records `stages`, supports `leave()`/`checkLastAttempt()`); new flow tests for Back-stops-the-payment and a late approval after a cancel.
+**Verified:** `flutter analyze`: no issues. `flutter test`: 140 passed. `flutter build apk --debug`: built (Kotlin compiles). Not run on a phone: the `cashfreeResult` path and the real Cashfree SDK are covered only by the `FakeGateway` in widget tests.
+**Docs updated:** `docs/02-architecture.md`, `07-known-issues.md`, `09-deep-link-onboarding.md`, `ai/AGENT_CONTEXT.md`, this log.
+**Follow-ups:** run a real sandbox payment on a phone to confirm the callback path and the capped waits; the server can still create a second mandate on a double tap (unchanged).
+
+---
+
+## 2026-10-22 — Review number opens local-only notes instead of the web page
+
+**Request:** the test number 9931133385 (OTP 123456) must open the notes screen after verification, not the WebView. The WebView is only for other numbers, after subscription.
+**Risk flagged, owner accepted:** reviewers seeing a notes app while buyers get a paywalled web page is what Play's cloaking policy can flag. The owner has repeated the instruction, so it is built; the risk is recorded in [07-known-issues.md](07-known-issues.md#notes-screens-unreachable) and [09-deep-link-onboarding.md](09-deep-link-onboarding.md#the-review-account).
+**Changes:**
+- New `OnboardingStage.notes`; `OnboardingController.reviewSignedIn()` now sets `notes` (+`reviewAccount`) instead of `web`. `refresh()` still skips the review account.
+- New `lib/services/local_notes_store.dart` (`LocalNotesStore`): notes in `shared_preferences` via `OnboardingStore` (`local_notes_v1`), a broadcast stream, create/update/delete/restore, device-clock timestamps, no Firebase. New `OnboardingStore.loadNotes`/`saveNotes`.
+- New providers `localNotesStoreProvider`, `localNotesStreamProvider`, `localNoteActionsProvider` (`LocalNoteActions`, mirrors `NoteActions`, fires the same note analytics).
+- `AppGate`: `notes` stage renders `NotesListScreen` outside `BrandShell`, so it keeps the app's violet theme.
+- `NotesListScreen`, `NoteEditorScreen` repointed from `notesStreamProvider`/`noteActionsProvider` to the local providers; dropped `firebase_auth`/`UserAvatar`/`currentUserProvider`. `ProfileScreen` rewritten: no Firebase user (generic "Signed in" card, "saved on this device"), Log out calls `OnboardingController.signOut`.
+- The Firestore notes path (`notesStreamProvider`, `NoteActions`, `NotesRepository`, `AuthService`, `currentUserProvider`, `signInControllerProvider`) is now unused but kept.
+- Tests: `review account` group lands on notes, creates a note, checks it persists to `local_notes_v1`, survives a restart, and logs out from Profile. Maestro `review_account.yaml` rewritten to land on notes, create a note, restart, and log out from Profile.
+**Verified:** `flutter analyze`: no issues. `flutter test`: 138 passed. `flutter build apk --debug`: built. `check-syntax` on `review_account.yaml`: OK. Not run on a phone (same install-signature block as the previous entry).
+**Docs updated:** `docs/01-overview.md`, `02-architecture.md`, `03-app-flow.md`, `07-known-issues.md`, `08-e2e-testing.md`, `09-deep-link-onboarding.md`, `10-analytics.md`, `ai/AGENT_CONTEXT.md`, this log.
+**Follow-ups:** as the previous entry, plus — decide whether to delete the now-unused Firestore notes code; confirm with the owner they understand the Play-review risk of the review number seeing a different app; run `review_account.yaml` on a phone after uninstalling the Play build.
+
+---
+
+## 2026-10-22 — Phone sign-in for everyone; Google sign-in and maintenance screen removed; WebView
+
+**Request:** the deep link does not work, so change the whole flow: remove Google sign-in, use the mobile number and code for everyone, send number 9931133385 with a fixed code 123456 straight to the notes screen, show everyone else the paywall and, after subscribing, a WebView with full settings; remove the maintenance screen. The URL comes from `app_config`.
+**Declined part:** sending the review number to the notes screen while every other user gets the paywall and web page. Reviewers would see a different app from paying users (Play's Deceptive Behavior policy). The owner agreed to a version where the review number lands on the same web page, then asked again for notes on that number; that part was not built. The review number skips the SMS and the paywall onto the web page.
+**Changes:**
+- `pubspec.yaml`: removed `google_sign_in`, `google_sign_in_android`, `google_sign_in_ios`; added `webview_flutter`, `webview_flutter_android` 4.14.1 and `url_launcher` 6.3.3.
+- Deleted `lib/screens/auth_gate.dart`, `sign_in_screen.dart`, `onboarding/maintenance_screen.dart`. `auth_service.dart` keeps only Firebase auth state and sign-out; `SignInController` only signs out. `errors.dart` lost the Google mappings. `Info.plist` lost the Google URL scheme.
+- `OnboardingStage` is now `signIn`, `paywall`, `web` (no `inactive`, no `maintenance`); `OnboardingState` has `reviewAccount`. Older saved values map: `maintenance` → `web`, `inactive`/`details`/`member` → `signIn`.
+- `OnboardingController`: every launch starts at sign-in unless a later stage is saved; links and the referrer only send `Deep Link Opened`; `refresh` and `signOut` skip the server for the review account; new `reviewSignedIn()`.
+- `PhoneAuthController`: the review number (`lib/models/review_account.dart`) sends no SMS and accepts only 123456.
+- New `lib/screens/onboarding/web_screen.dart`: app bar (logo, Reload, menu with Log out), WebView with JavaScript, zoom, media without a tap, third-party cookies, text zoom from the phone's font size, debugging in debug builds, progress bar, error view, back through history, non-http links to other apps; "You're all set" with "Check again" while there is no URL.
+- `RemoteConfig`: `webUrl` from `webview_url` (https only) replaces `maintenanceTitle`/`maintenanceMessage`. New migration `20261022120000_webview_url.sql` (not pushed).
+- `Analytics`: removed the five Google sign-in events, `identify(uid, name, email)` and `Maintenance Viewed`; `Deep Link Opened` lost `started_onboarding`; added `Web Page Viewed` (`has_url`), `Web Page Failed` (`reason`), `Review Account Signed In`.
+- `main.dart`: no Google initialisation; the referrer is kept for analytics only.
+- Tests rewritten for the new start, the review account and the web page screen. Maestro: new `flows/onboarding.yaml` and `flows/review_account.yaml`; the notes flows, `deeplink_local`, `onboarding_deeplink` and the subflows moved to `.maestro/retired/` (gitignored folder, so moved rather than deleted). `tool/deeplink.sh --check` runs `onboarding.yaml`.
+**Verified:** `flutter analyze`: no issues. `flutter test`: 137 passed. `flutter build apk --debug`: built. Both flows pass `check-syntax`. **Not run on a phone:** the test phone (`RZ8T606RJ0N`) has the Play-signed build installed; `adb install -r` of the test-mode build failed with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, and it was not uninstalled without asking.
+**Docs updated:** `README.md`, `docs/README.md`, `docs/01-overview.md`, `02-architecture.md`, `03-app-flow.md`, `05-setup-and-build.md`, `06-conventions.md`, `07-known-issues.md`, `08-e2e-testing.md`, `09-deep-link-onboarding.md`, `10-analytics.md`, `ai/AGENT_CONTEXT.md`, this log.
+**Follow-ups:** push the migration and set `webview_url` (owner's go-ahead); run both flows on a phone after uninstalling the Play build; rewrite the Play listing, screenshots and `website/` to describe the subscription and web page; declare the review account in Play Console → App access; decide whether to delete the notes code and Firebase; bump the version before the next upload; consider file upload and camera/location for the WebView.
+
+---
+
 ## 2026-10-22 — Play release notes for 1.0.1+2
 
 **Request:** what the release notes for the new release should say.
@@ -25,6 +177,36 @@ One entry per completed task, newest first. Keep entries short: what changed, wh
 **Verified:** under Play's 500-character limit. Not checked in Play Console.
 **Docs updated:** this log only.
 **Follow-ups:** none.
+
+---
+
+## 2026-10-22 — Play referrer: market:// link also withheld
+
+**Request:** owner reports `(not set)` still, with the release live at 100% rollout; find a Play-only way.
+**Changes:** docs only.
+**Verified:** test phone (only account: Workspace `bhaktilok.app`; Play Store 53.6.15), live 1.0.1+2 installed by Play at 15:09 IST from `market://details?id=com.spacewire.evos&referrer=utm_source%3Dmarket_probe%26utm_medium%3Dlink%26flow%3Donboarding` sent to Play explicitly (without the package, Samsung's Galaxy Store also offers to open `market://`). Opened the notes app. Searches found no documented Play change or fix for "(not set)".
+**Docs updated:** `docs/07-known-issues.md`.
+**Follow-ups:** owner to say which phone and account gave their latest "(not set)". Decide a deterministic fallback (verified App Link page after install).
+
+---
+
+## 2026-10-22 — Play referrer: a full-UTM link is withheld too
+
+**Request:** find a Play-only way to make the onboarding link work (no third-party SDK).
+**Changes:** docs only.
+**Verified:** test phone, live 1.0.1+2, installed by Play at 14:57 IST from `...&referrer=utm_source%3Dprobe%26utm_medium%3Dlink%26utm_campaign%3Donboarding%26utm_content%3Devos_onboarding%26utm_term%3Dt1%26flow%3Donboarding` (adb into Play). Mixpanel: `install_referrer_raw: utm_source=(not%20set)&utm_medium=(not%20set)`, `referrer_click_recorded: true`. Play drops the whole referrer, standard UTM fields included, so the hypothesis that it keeps only UTM fields is ruled out; no link format will help on this phone and account.
+**Docs updated:** `docs/07-known-issues.md`, `docs/ai/AGENT_CONTEXT.md`.
+**Follow-ups:** install through the link on a phone whose only Google account is a personal @gmail.com one, and read `install_referrer_raw`.
+
+---
+
+## 2026-10-22 — Play referrer on the live 1.0.1+2: Play withholds it
+
+**Request:** the owner released 1.0.1+2, installed it from the onboarding link (Gmail, test phone, 14:42 IST) and shared the Mixpanel event.
+**Changes:** docs only.
+**Verified:** Mixpanel `Install Attributed`: `install_referrer_raw: utm_source=(not%20set)&utm_medium=(not%20set)`, `referrer_click_recorded: true`, `referrer_attempt: 1`. Play registered the tap on the link but replaced the link's referrer with "(not set)". The app treats that answer as final, which is correct. The earlier `install_source: unknown` was almost certainly the same string (the parser drops "(not set)"), not an empty answer. Phone: installer `com.android.vending`, version 1.0.1, opened from Gmail (uid 10200). Its only Google account is a Workspace account (`bhaktilok.app`); developer reports say a fresh, unmanaged account is the fix for "(not set)". Not official Google documentation.
+**Docs updated:** `docs/ai/AGENT_CONTEXT.md`, `docs/07-known-issues.md`.
+**Follow-ups:** test on a phone signed in only to a personal @gmail.com account. If that also reads "(not set)", Play will not carry the referrer for this app and onboarding needs another way in (attribution SDK, or own click matching).
 
 ---
 
