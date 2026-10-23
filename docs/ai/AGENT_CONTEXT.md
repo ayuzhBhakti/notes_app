@@ -1,0 +1,156 @@
+# Agent context
+
+Condensed, current facts about this project for AI coding agents. The full docs are in [docs/](../README.md); read the relevant one before a non-trivial change.
+
+Last verified against the code: 2026-10-23 (per-source web page verified end-to-end).
+
+## What this is
+
+A Flutter app called Evos, state in Riverpod 3, Android configured (iOS in code only; web and desktop not). **Since 2026-10-22 everyone signs in by mobile number → SMS code**, then either the paywall → web page (ordinary numbers) or a local notes screen (the one review number). Phone sign-in, settings and the subscription are on Supabase, payment is Cashfree UPI AutoPay, and the name, logo, colour, paywall text, prices and the web page's URL (`webview_url`) come from the backend's `app_config` table. Modelled on the sibling project `../cash_alert`. Details: [09-deep-link-onboarding.md](../09-deep-link-onboarding.md).
+
+- **Google sign-in was removed** (package, `SignInScreen`, `AuthGate`, iOS URL scheme). There is no `google_sign_in` dependency.
+- **The maintenance screen was replaced** by `WebScreen`, a WebView of `webview_url`.
+- **Review account:** `9931133385` (India) with the code `123456` skips the SMS and the paywall and opens the notes screen (stage `OnboardingStage.notes`). Its notes are **local-only** (`LocalNotesStore`, in `shared_preferences`, no Firebase). Checked on the device in `PhoneAuthController`; constants in `lib/models/review_account.dart`; saved as `"review": true` so no subscription check runs for it. This is the owner's explicit decision (2026-10-22, repeated): the review number sees notes while everyone else sees the paywall/web page. The app-review-cloaking risk was flagged and the owner accepted it.
+- **The notes screens (list, editor, profile) are reached only by the review account, and only through `LocalNotesStore`.** The Firebase/Firestore notes path (`notesStreamProvider`, `NoteActions`, `currentUserProvider`, `NotesRepository`, `AuthService` sign-out) is still in the code but no screen uses it now. Whether to delete the Firebase notes code is open.
+- **The Play referrer still has one job:** its `utm_source` picks the web page. Saved on first launch (`install_source_v1`), it overrides `webview_url` from the `webview_sources` table (per-source page; see [09-deep-link-onboarding.md](../09-deep-link-onboarding.md#per-source-web-page-the-webview_sources-table)). Incoming links themselves only feed `Deep Link Opened` analytics; everyone signs in by phone whatever the source.
+
+Every step reports to Mixpanel and the Facebook SDK, on Android only. Every event is listed in [10-analytics.md](../10-analytics.md).
+
+## Commands
+
+```sh
+flutter pub get
+flutter analyze            # must report no issues
+flutter test               # 143 tests, all must pass
+flutter build apk --debug  # verified working 2026-10-22
+flutter build apk          # release, signed with the upload key, verified 2026-10-21
+flutter build appbundle    # for Play; writes a signed .aab but exits with an error until cmdline-tools are installed
+flutter run                              # talks to the real Evos Supabase project
+flutter run --dart-define=SUPABASE_URL=  # test mode: no SMS, code 123456, simulated payment
+./tool/maestro.sh test .maestro                 # end-to-end flows; needs a device with the app installed
+./tool/maestro.sh check-syntax <flow.yaml>      # no device needed
+./tool/setup_backend.sh check                   # read-only: what the Evos Supabase project has
+./tool/deeplink.sh --check                      # runs .maestro/flows/onboarding.yaml (test-mode build)
+./tool/deeplink.sh --reset                      # clear the app's data: back to the mobile-number screen
+```
+
+Always run Maestro through `tool/maestro.sh`. A bare `maestro` or `java` fails on this machine.
+
+## Where things are
+
+| Need | File |
+|------|------|
+| Startup | `lib/main.dart` |
+| Notes theme, brand colours, font (Poppins, bundled) | `lib/theme.dart`, `assets/fonts/` |
+| Drawn logo (unused), user avatar (unused), note card | `lib/widgets/evos_mark.dart`, `user_avatar.dart`, `note_tile.dart` |
+| All providers and controllers | `lib/providers.dart` |
+| Note model | `lib/models/note.dart` |
+| Firebase sign-out (unused since 2026-10-22) | `lib/services/auth_service.dart` |
+| Firestore reads and writes (unused now) | `lib/services/notes_repository.dart` |
+| Local notes for the review account (the only live notes path) | `lib/services/local_notes_store.dart`, providers `localNotesStreamProvider`, `localNoteActionsProvider` |
+| Root widget, stage switch | `lib/screens/app_gate.dart` |
+| Notes screens (review account only, local-only data) | `lib/screens/` (`notes_list_screen`, `note_editor_screen`, `profile_screen`) |
+| The screens users see | `lib/screens/onboarding/` (`phone_screen`, `otp_screen`, `paywall_screen`, `web_screen`) |
+| Review account number and code | `lib/models/review_account.dart` |
+| Backend name, colour and logo on those screens | `lib/widgets/brand.dart`, `lib/models/remote_config.dart`, provider `remoteConfigProvider` (`remoteConfigSettledProvider`: whether it holds the backend's answer yet) |
+| Paywall settings (every text, icon, the video card's shape) and the icon names | `RemoteConfig`, `kPaywallIcons` in `paywall_screen.dart`; the keys are in [09-deep-link-onboarding.md](../09-deep-link-onboarding.md#settings-the-app_config-table) |
+| Play install referrer | `lib/services/install_referrer_service.dart`, `android/app/src/main/kotlin/com/spacewire/evos/MainActivity.kt` |
+| Supabase: phone sign-in, settings, subscription status | `lib/services/evos_backend.dart`, `lib/supabase_options.dart` |
+| Backend schema and edge functions (not deployed) | `supabase/migrations/`, `supabase/functions/` |
+| Per-source web page: table, source persistence, lookup | `supabase/migrations/20261022130000_webview_sources.sql`, `OnboardingStore.installSource`, `installSourceProvider`, `EvosBackend.fetchConfig(installSource)` |
+| Deep link receiving (analytics only), link host and path | `lib/services/deep_link_service.dart` |
+| Onboarding stage model and device storage (stage, session, settings) | `lib/models/onboarding.dart`, `lib/services/onboarding_store.dart` |
+| Payment interface, Cashfree and simulated gateways; the processing screen's stage (`checkoutStageProvider`) | `lib/services/payment_gateway.dart`, `android/app/src/main/kotlin/com/spacewire/evos/payments/PaymentsChannel.kt` |
+| Analytics events (all of them) | `lib/services/analytics.dart`, provider `analyticsProvider` |
+| Mixpanel and Facebook SDK calls | `android/app/src/main/kotlin/com/spacewire/evos/analytics/` |
+| Analytics keys | `android/app/src/main/res/values/analytics_keys.xml` |
+| Install source for analytics | `lib/models/install_source.dart` |
+| Screen-view helper | `lib/widgets/track_view.dart` |
+| Mobile-number rule | `lib/utils/validators.dart` |
+| Error-to-message mapping, error codes for analytics | `lib/utils/errors.dart` |
+| Relative time formatting | `lib/utils/format.dart` |
+| Security rules | `firestore.rules` |
+| Test fakes for Supabase and Cashfree, and the app launch helper | `test/support/harness.dart` |
+| Website for the link domain (assetlinks.json, fallback page), Firebase Hosting, not deployed | `web_links/`, `firebase.json`, `.firebaserc` |
+| App icon (SVG source, PNG script, Android adaptive icon) | `tool/app_icon/`, `android/app/src/main/res/drawable/ic_launcher_*.xml`, `res/mipmap-anydpi-v26/` |
+| End-to-end flows | `.maestro/flows/` (`onboarding`, `review_account`), order in `.maestro/config.yaml`; old notes and link flows in `.maestro/retired/` (not run; `.maestro/` is gitignored) |
+| Firebase options | `lib/firebase_options.dart` (hand-written) |
+| Public website: home, privacy, terms, delete data, contact, 404 (plain HTML, not uploaded), `.htaccess` | `website/` |
+
+## Rules that will break things if ignored
+
+1. **Firestore timestamps must be `FieldValue.serverTimestamp()`.** The security rules reject client clocks with `permission-denied`.
+2. **A note document has exactly four fields:** `title`, `body`, `createdAt`, `updatedAt`. Adding a field means changing `firestore.rules` (`hasOnly` and `hasAll`), `Note`, and `NotesRepository` together, and the rules must then be published by hand in the Firebase console. Tell the user when rules need publishing; you cannot do it.
+3. **Do not await Firestore writes before popping a screen.** The future completes only on server acknowledgement, so it hangs offline. Follow the `unawaited(...).then(...)` pattern in `note_editor_screen.dart`.
+4. **Do not navigate on sign-in or sign-out.** `AppGate` renders from the stage.
+5. **The review number lands on the local notes screen; everyone else on the paywall/web page.** This is deliberate (owner's decision, 2026-10-22). If this number is handed to Google Play reviewers, that difference is what Play's cloaking policy can flag — flag it to the user, do not silently "fix" it by routing the review number to the paywall.
+6. **The review account has no Supabase session and no Firebase user.** Anything that asks the server about the current user must skip it when `OnboardingState.reviewAccount` is true, or it is sent back to sign-in. Its notes go through `LocalNotesStore` / `localNoteActionsProvider`, never `NotesRepository`.
+7. **Riverpod is 3.x.** No `.valueOrNull`; `.value` is null on loading and error; providers retry on failure unless `retry:` is overridden; errors crossing providers arrive wrapped in `ProviderException`.
+8. **FlutterFire versions are pinned exactly and move together** (`firebase_core`, `firebase_auth`, `cloud_firestore`). Do not change one alone or switch them to caret ranges.
+8a. **Never commit, print, move or regenerate `android/key.properties` or `android/app/upload-keystore.jks`.** They are the Play upload key (see [05-setup-and-build.md](../05-setup-and-build.md#release-signing)); a new key cannot update the published app.
+9. **Do not add the `google-services` Gradle plugin or run `flutterfire configure`.** Configuration is in Dart on purpose. Do not re-add `google_sign_in`.
+10. **Screens do not call Firebase SDKs directly.** Go through providers.
+11. **Maestro flows select on visible text and on `Semantics(identifier: ...)`.** Renaming a label, a button text or an identifier breaks flows. Search `.maestro/` first and update the flows in the same change. The identifiers are listed in [08-e2e-testing.md](../08-e2e-testing.md#how-the-flows-are-written). A tappable card merges its texts into one node: keep the note card's `Semantics(container: true)` wrappers.
+
+12. **`DeepLinkService.start()` runs before `runApp`, and `MaterialApp` has no `home`.** Either change makes Flutter push incoming link URLs as named routes. Keep `onGenerateInitialRoutes` and `onGenerateRoute` in `main.dart`, even though links now only feed analytics: the intent filters still deliver them.
+13. **The link host appears in two places that must match:** `kDeepLinkHost` in `deep_link_service.dart` and `android:host` in `AndroidManifest.xml`.
+14. **`deepLinkServiceProvider` and `onboardingStoreProvider` throw unless overridden.** `main()` overrides them; any test that pumps `NotesApp` must too, and must override `evosBackendProvider` and `paymentGatewayProvider` with fakes. Use `launch` in `test/support/harness.dart`.
+15. **Never navigate on an onboarding stage change.** `AppGate` renders from `onboardingControllerProvider`.
+16. **Payment is Cashfree when Supabase is configured, simulated otherwise.** Do not remove either "Test mode" notice (paywall, code screen). Never remove the AutoPay sentence on the paywall: it is the statement that money is taken every month. The backend may word it (`paywall_autopay_text`, owner's decision 2026-10-19), but a blank must keep falling back to the app's own and the prices must stay `{trial}`/`{recurring}` placeholders filled from the amount rows. The server, not the device, decides who has paid: never set the `web` stage from anything but `signedIn`, `subscribed` or `refresh`. `reviewSignedIn` sets the `notes` stage, not `web`.
+17. **Supabase: pure-Dart `supabase` only, never `supabase_flutter`,** and only `evos_backend.dart` imports it. The session is saved by hand in `OnboardingStore`; keep the `onAuthStateChange` listener that does it. Await Supabase calls; do not copy the un-awaited Firestore pattern.
+17a. **The Cashfree id and secret never reach the app.** They are private `app_config` rows read by edge functions. Never mark them `is_public`, never add them to `RemoteConfig`, and never add a write policy for `anon` or `authenticated` on any table.
+17d. **SMS settings are `app_config` rows** (`fast2sms`, `fast2sms_dlt_sender_id`, `fast2sms_dlt_te_id`, `send_sms_hook_secret`), all private, with function secrets only as a fallback. The owner keeps CashAlert's the same way; `../cash_alert`'s repository shows secrets instead and may be behind what is deployed.
+17b. **Do not deploy edge functions, push migrations, or edit `app_config` without the user's explicit go-ahead.** They act on a live project that takes payments.
+17c. **`cashfree_environment` must be the exact word `production` to take real money,** in both `app_config.ts` and `PaymentsChannel.kt`. Keep that default-to-sandbox rule.
+17e. **`startSubscription` (Kotlin) must return as soon as the UPI app opens, not when Cashfree calls back** (fixed 2026-10-22). The callback is sent to Dart as a separate `cashfreeResult` method call. Do not restore the old `pending` Result that was held open — Cashfree does not always call back, and that left the paywall stuck. `CashfreePaymentGateway` caps every wait and `leave()` stops it when the user presses Back on the processing screen; keep both. `checkLastAttempt()` catches a late approval in the background.
+18. **The channel name `com.spacewire.evos/install_referrer` appears in both `MainActivity.kt` and `install_referrer_service.dart`** and must match. The same holds for `com.spacewire.evos/analytics` in `AnalyticsChannel.kt` and `analytics.dart`, and for `com.spacewire.evos/payments` in `PaymentsChannel.kt` and `payment_gateway.dart`. The UPI packages in `PaymentsChannel.kt` must each be listed under `<queries>` in `AndroidManifest.xml`.
+19. **Every analytics event is a method on `Analytics`,** and adding, renaming or removing one means updating [10-analytics.md](../10-analytics.md) in the same change. Never send note content, a phone number or a sign-in code; send `errorCode(error)`, never an error message. Never await analytics or call it from `build`.
+20. **Never send a simulated payment to Facebook as a purchase.** `Analytics.subscriptionSucceeded` skips `metaSubscribe` when `simulated` is true; keep that.
+21. **Do not put another app's Mixpanel token or Facebook keys in `analytics_keys.xml`,** and do not remove the two `false` Facebook entries in `AndroidManifest.xml`: they keep an unconfigured build from contacting Facebook.
+22. **Mixpanel, the Facebook SDK and the Cashfree SDK are Gradle dependencies used from Kotlin.** Do not add `mixpanel_flutter`, `facebook_app_events` or `flutter_cashfree_pg_sdk`.
+23. **Do not run `dart format` on existing files.** They are not formatter-clean, and it rewrites hundreds of unrelated lines.
+24. **The paywall shows no rating, subscriber count or social-proof line unless the backend sends one.** Do not hard-code any.
+25. **The public website (`website/`) and the Play listing must describe what users actually get:** phone sign-in, the subscription and the web page. Since 2026-10-22 they still describe the notes app, which is an open item, not a rule to keep. The privacy policy lists every kind of data collected and every processor (including mobile number, SMS, Supabase and Cashfree), because Play and the law require it. Update it when data collection changes.
+26. **After changing a CSS or JS file in `website/`, change the `?v=` value on its links in every page** (one date, `YYYYMMDD`, for the whole site). Hostinger's CDN otherwise keeps serving the old copy. Never rename the files instead. Details: [05-setup-and-build.md](../05-setup-and-build.md#website-upload-hostinger).
+
+## Code style
+
+Explicit types on everything, `const` where possible, relative imports in `lib/`, comments that explain why. Providers are declared by hand, no code generation. User-facing errors go through `describeError`. Details: [06-conventions.md](../06-conventions.md).
+
+## Current state
+
+- **2026-10-22: switched to phone sign-in for everyone** (Google sign-in and the maintenance screen removed, `WebScreen` added). The review number `9931133385`/`123456` opens a **local-only notes screen** (`LocalNotesStore`); everyone else goes paywall → web page. 138 of 138 tests pass; `flutter analyze` reports no issues; a debug APK builds. **Nothing of this has run on a phone**: the test phone has the Play-signed build installed, and a debug build cannot replace it without uninstalling it (which was not done). Maestro flows `onboarding` and `review_account` pass `check-syntax` only.
+- **`webview_url` row is on the server but blank.** Migration `20261022120000` is pushed; until the row is filled, the web page screen shows "You're all set".
+- **Per-source web page — verified end-to-end 2026-10-23, not yet in users' hands.** The install's `utm_source` overrides `webview_url` with the matching `webview_sources` row. Migration pushed; table live with rows `filmyface`/`facebook` → instagram (owner's test data). On the device (real-backend debug build, real network): `filmyface`/`facebook` resolved to instagram, `google-play` fell back to the global netlify URL, the WebView rendered the page, and `Web Page Viewed` carried `install_source`/`web_host` to Mixpanel. **Still needs a version bump + Play upload** to reach users; the real payment→web path is blocked by the incomplete Cashfree setup (unrelated).
+- **Store listing, screenshots and `website/` still describe the notes app.** They must be updated to describe the subscription and the web page before this ships. Not done: what the web page offers is not known here.
+- WebView gaps: no file upload (no picker plugin), camera/microphone/location requests denied, `intent://` links not handled. See [07-known-issues.md](../07-known-issues.md#phone-sign-in-paywall-and-web-page-changed-2026-10-22).
+- **Sign-in carousel layout freeze (2026-10-22):** `phone_screen.dart` freezes the carousel-or-not layout on the first ready frame (`_useCarousel`). Before this, a settings fetch that added slides after the form was shown swapped the whole layout (brand header, heading size, carousel) and the screen jumped. Late slides now wait for the next launch. Do not drive the layout off live `hasSlides` again.
+- **Paywall loading fix (2026-10-22, ported from Clenio):** tapping Try Now and returning without paying no longer leaves the paywall spinning. A capped processing screen replaces the button spinner; Back on it calls `PurchaseController.leave()`; a late bank approval is caught by `checkLastAttempt()`. Not run on a phone (the native `cashfreeResult` path is covered by widget tests through a `FakeGateway` only). Clenio's unrelated UPI-app-icon change was deliberately not ported.
+- **Version `1.0.2+3` built as a signed `.aab` on 2026-10-23** (`build/app/outputs/bundle/release/app-release.aab`), signed with the upload key `C3:40:52…`, package `com.spacewire.evos`. Contains phone sign-in + per-source web page. **Not uploaded.** Live Play is still versionCode 2 (1.0.1), the old Google-sign-in notes app. Before upload, see the readiness blockers in [07-known-issues.md](../07-known-issues.md) / the 2026-10-23 TASK_LOG entry: payment is unverified, the review-account difference is a Play-cloaking risk, and the store listing/website still describe the notes app.
+- **Sign-in works against the live backend; the owner reports payment works as of 2026-10-23** (not verified in this environment). Supabase project `sqvlgiqypqvjykczuhgz` is the default in `lib/supabase_options.dart`. On 2026-10-13 a real SMS code was sent and verified from the test phone and the paywall shown. The Cashfree rows of `app_config` and `customer_email_domain` are empty and no Cashfree function has handled a request, so do not report payment as working. `supabase db push` and `functions deploy` were allowed by the permission system; `config push` (auth settings) was refused. The Supabase CLI is at `~/.local/bin/supabase` (not on the PATH); listing another project's secrets was refused too. Never edit an applied migration: add a new timestamped file. Deno is not installed. Do not report sign-in, settings, or payment as working against a server.
+- **Test mode** (a debug build made with `--dart-define=SUPABASE_URL=`, empty) accepts any number with the code `123456`, simulates the payment, and fetches no settings. A normal build talks to the real project and sends a real SMS.
+- **Never run `onboarding.yaml` or type a made-up number into a normal build:** it would text a real stranger. Use a test-mode build, or a number the user owns. `review_account.yaml` is safe on any build.
+- **Analytics has real keys since 2026-10-21** (Facebook app "evos", `2015134735846694`). On 2026-10-21 Mixpanel and Facebook accepted every onboarding event from a test-mode build (logcat). Nobody has looked inside the dashboards. New on 2026-10-22 and never sent from a phone: `Web Page Viewed` (now with `install_source` and `web_host`), `Web Page Failed`, `Review Account Signed In`. The notes events (`Note Created` etc.) now fire again, for the review account's local notes, under the device's anonymous id. Removed: the five Google sign-in events and `Maintenance Viewed`; `Deep Link Opened` lost `started_onboarding`.
+- **The Play Store referrer link works** (owner confirmed 2026-10-22, test phone, live 1.0.1+2). Every earlier `utm_source=(not%20set)&utm_medium=(not%20set)` was caused by a **managed (Google Workspace) account signed in on the phone**: Play checks every account on the device and resets the referrer if any is enterprise-managed, even when a personal account is the active one in Play. **Test referrer links only on a phone with no work or Workspace account.** The test phone now has only a personal Gmail account. `assetlinks.json` lists Play's signing key `4A:2D:5C:…` (needed for the HTTPS link to open a Play install); the site is still not deployed.
+- Maestro 2.11.0 is installed in `~/.maestro`.
+- To show the web page or paywall with real settings on a test-mode build, which fetches none, seed `flutter.evos_config_v1` in the app's `FlutterSharedPreferences.xml` with `run-as`: a failed fetch keeps what is saved.
+- iOS has never been built on this machine. CocoaPods is not installed; the project uses Swift Package Manager. The payment code is Android-only.
+- **The app id is `com.spacewire.evos`** and the Dart package is `evos`, since 2026-10-19. Firebase still knows only `com.spacewire.notes`; that matters only if the notes screens come back with a Firebase sign-in.
+- **The website in `website/` is written but not uploaded.** It has no domain yet. See [07-known-issues.md](../07-known-issues.md#website).
+- Git: four commits; work is on the branch `deeplink_feature`. Commit only when asked, and branch first.
+
+## Environment traps
+
+- The Gradle wrapper download can time out on this network. The fix is in [05-setup-and-build.md](../05-setup-and-build.md#troubleshooting).
+- There is no `java` on the PATH. The JDK is Android Studio's bundled one at `/Applications/Android Studio.app/Contents/jbr/Contents/Home`; Flutter finds it without help.
+- The Flutter SDK at `~/flutter` is quarantined by macOS (unpacked from a Safari download). A release build failing with `gen_snapshot` exit code -9 or a missing `gen_snapshot` is this; the fix is in [05-setup-and-build.md](../05-setup-and-build.md#troubleshooting).
+
+## After every task
+
+This is required, not optional.
+
+1. Run `flutter analyze` and `flutter test`. If the change touches a screen, run `check-syntax` on the affected flows, and run them when a device is connected.
+2. Add an entry at the top of [TASK_LOG.md](TASK_LOG.md).
+3. Update the docs the change affects, using the table in [docs/README.md](../README.md#keeping-these-docs-current).
+4. Correct this file if any statement in it stopped being true, and update the "Last verified" date.
+5. Tell the user which docs you updated.

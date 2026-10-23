@@ -1,4 +1,4 @@
-name: notes
+name: evos
 description: "A new Flutter project."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+1
+version: 1.0.2+3
 
 environment:
   sdk: ^3.13.2
@@ -45,15 +45,22 @@ dependencies:
   firebase_auth: 6.7.0
   cloud_firestore: 6.10.0
 
-  google_sign_in: ^7.2.0
-  # The federated implementations are direct dependencies because THEIR versions,
-  # not google_sign_in's, decide whether this project builds at all:
-  #   * android < 7.2.12 uses `kotlinOptions {}` — a hard error under KGP 2.4.0.
-  #   * ios < 6.3.0 has no UIScene URL handling, so the OAuth redirect never returns.
-  google_sign_in_android: ^7.2.17
-  google_sign_in_ios: ^6.3.3
-
   flutter_riverpod: ^3.4.3
+  # Holds the deep-link onboarding state (stage, form details, plan). It has to
+  # live on the device because that flow runs before any account exists.
+  shared_preferences: ^2.5.5
+  supabase: ^2.16.2
+  # The paywall's preview video (ExoPlayer on Android). The URL comes from the
+  # backend's app_config row paywall_video_url.
+  video_player: ^2.11.1
+  # The screen a subscriber lands on. The URL is the backend's app_config row
+  # webview_url. webview_flutter_android is direct because the screen sets
+  # Android-only options (text zoom, media autoplay, third-party cookies).
+  webview_flutter: ^4.14.1
+  webview_flutter_android: ^4.14.1
+  # Opens links the web page points outside the web (tel:, mailto:, upi:,
+  # whatsapp:) in the app that handles them.
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:
@@ -76,6 +83,20 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # Poppins, the website's font, for the notes interface (lib/theme.dart).
+  # Bundled rather than fetched at runtime so it works offline. Licence:
+  # assets/fonts/OFL.txt.
+  fonts:
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins-Regular.ttf
+        - asset: assets/fonts/Poppins-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Poppins-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Poppins-Bold.ttf
+          weight: 700
 
   # To add assets to your application, add an assets section, like this:
   # assets:

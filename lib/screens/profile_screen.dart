@@ -1,102 +1,109 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers.dart';
-import '../utils/errors.dart';
+import '../services/analytics.dart';
+import '../theme.dart';
+import '../widgets/track_view.dart';
 
-class ProfileScreen extends ConsumerWidget {
+/// Profile for the store-review account. That account has no Firebase user, so
+/// there is no name, email or photo to show — only a notice and a way out.
+class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final User? user = ref.watch(currentUserProvider);
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
-    final bool busy = ref.watch(signInControllerProvider).isLoading;
 
-    // Signing out pops this route via the auth gate, but the frame in between
-    // still builds, so handle the null case rather than asserting on it.
-    if (user == null) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    final String? photoUrl = user.photoURL;
-    final String name = user.displayName?.trim().isNotEmpty ?? false
-        ? user.displayName!.trim()
-        : 'Signed in';
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('Profile')),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 24),
-        children: <Widget>[
-          Center(
-            child: CircleAvatar(
-              radius: 44,
-              backgroundColor: theme.colorScheme.primaryContainer,
-              foregroundImage:
-                  photoUrl == null ? null : NetworkImage(photoUrl),
+    return TrackView(
+      onView: (Analytics analytics) => analytics.profileViewed(),
+      child: Scaffold(
+        appBar: AppBar(title: const Text('Profile')),
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+          children: <Widget>[
+            const _Header(),
+            const SizedBox(height: 28),
+            Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 10),
               child: Text(
-                _initials(name),
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  color: theme.colorScheme.onPrimaryContainer,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Center(
-            child: Text(name, style: theme.textTheme.titleLarge),
-          ),
-          if (user.email != null) ...<Widget>[
-            const SizedBox(height: 4),
-            Center(
-              child: Text(
-                user.email!,
-                style: theme.textTheme.bodyMedium?.copyWith(
+                'Account',
+                style: theme.textTheme.labelLarge?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
             ),
-          ],
-          const SizedBox(height: 32),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.fingerprint),
-            title: const Text('User ID'),
-            subtitle: Text(user.uid),
-          ),
-          const Divider(),
-          const SizedBox(height: 16),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: OutlinedButton.icon(
-              onPressed: busy ? null : () => _confirmSignOut(context, ref),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: <Widget>[
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Icon(
+                        Icons.phone_iphone,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text('Notes', style: theme.textTheme.titleSmall),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Saved on this device.',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 32),
+            OutlinedButton.icon(
+              onPressed: _busy ? null : () => _confirmSignOut(context),
               icon: const Icon(Icons.logout),
               label: const Text('Log out'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: theme.colorScheme.error,
-                padding: const EdgeInsets.symmetric(vertical: 14),
+                side: BorderSide(
+                  color: theme.colorScheme.error.withValues(alpha: 0.4),
+                ),
+                minimumSize: const Size.fromHeight(56),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  Future<void> _confirmSignOut(BuildContext context, WidgetRef ref) async {
-    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
-
+  Future<void> _confirmSignOut(BuildContext context) async {
     final bool confirmed = await showDialog<bool>(
           context: context,
           builder: (BuildContext dialogContext) => AlertDialog(
             title: const Text('Log out?'),
             content: const Text(
-              'Your notes stay in your account and will be here when you '
-              'sign back in.',
+              'Your notes stay on this device and will be here when you '
+              'sign back in with this number.',
             ),
             actions: <Widget>[
               TextButton(
@@ -114,23 +121,66 @@ class ProfileScreen extends ConsumerWidget {
 
     if (!confirmed) return;
 
-    await ref.read(signInControllerProvider.notifier).signOut();
-
-    final Object? error = ref.read(signInControllerProvider).error;
-    if (error != null) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(describeError(error).message)),
-      );
-    }
-    // On success the auth gate swaps in the sign-in screen; no pop needed here.
+    setState(() => _busy = true);
+    // AppGate swaps in the mobile-number screen, which removes this route; no
+    // pop is needed here.
+    await ref.read(onboardingControllerProvider.notifier).signOut();
   }
+}
 
-  String _initials(String name) {
-    final List<String> parts =
-        name.trim().split(RegExp(r'\s+')).where((String p) => p.isNotEmpty).toList();
-    if (parts.isEmpty) return '?';
-    if (parts.length == 1) return parts.first.characters.first.toUpperCase();
-    return (parts.first.characters.first + parts.last.characters.first)
-        .toUpperCase();
+/// The violet card at the top, in the launcher icon's colours.
+class _Header extends StatelessWidget {
+  const _Header();
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
+      decoration: BoxDecoration(
+        gradient: kBrandGradient,
+        borderRadius: BorderRadius.circular(28),
+      ),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: <Widget>[
+          const Positioned(
+            top: -8,
+            right: -4,
+            child: CircleAvatar(radius: 6, backgroundColor: kBrandAmber),
+          ),
+          Column(
+            children: <Widget>[
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withValues(alpha: 0.9),
+                  ),
+                  child: CircleAvatar(
+                    radius: 42,
+                    backgroundColor: theme.colorScheme.primaryContainer,
+                    child: Icon(
+                      Icons.person,
+                      size: 44,
+                      color: theme.colorScheme.onPrimaryContainer,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Signed in',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }

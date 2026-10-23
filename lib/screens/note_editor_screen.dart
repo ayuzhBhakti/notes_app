@@ -28,6 +28,12 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
       TextEditingController(text: widget.note?.body ?? '');
 
   @override
+  void initState() {
+    super.initState();
+    ref.read(analyticsProvider).noteEditorOpened(isNew: widget.note == null);
+  }
+
+  @override
   void dispose() {
     _title.dispose();
     _body.dispose();
@@ -48,7 +54,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     // can still surface a failure.
     final NavigatorState navigator = Navigator.of(context);
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
-    final NoteActions actions = ref.read(noteActionsProvider.notifier);
+    final LocalNoteActions actions = ref.read(localNoteActionsProvider.notifier);
 
     // Deliberately not awaited before popping. Firestore commits to the local
     // cache immediately — the note is already in the list, flagged "Saving…" —
@@ -64,7 +70,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
           SnackBar(
             content: Text(
               describeError(
-                ref.read(noteActionsProvider).error ?? 'Save failed',
+                ref.read(localNoteActionsProvider).error ?? 'Save failed',
               ).message,
             ),
           ),
@@ -81,7 +87,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
 
     final NavigatorState navigator = Navigator.of(context);
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
-    final NoteActions actions = ref.read(noteActionsProvider.notifier);
+    final LocalNoteActions actions = ref.read(localNoteActionsProvider.notifier);
 
     unawaited(
       actions.delete(note.id).then((bool ok) {
@@ -91,7 +97,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
             SnackBar(
               content: Text(
                 describeError(
-                  ref.read(noteActionsProvider).error ?? 'Delete failed',
+                  ref.read(localNoteActionsProvider).error ?? 'Delete failed',
                 ).message,
               ),
             ),
@@ -117,54 +123,100 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   @override
   Widget build(BuildContext context) {
     final bool isEditing = widget.note != null;
+    final ThemeData theme = Theme.of(context);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(isEditing ? 'Edit note' : 'New note'),
-        actions: <Widget>[
-          if (isEditing)
-            IconButton(
-              tooltip: 'Delete',
-              icon: const Icon(Icons.delete_outline),
-              onPressed: _delete,
-            ),
-          IconButton(
-            tooltip: 'Save',
-            icon: const Icon(Icons.check),
-            onPressed: _save,
+        title: Text(
+          isEditing ? 'Edit note' : 'New note',
+          style: theme.textTheme.titleMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
           ),
+        ),
+        actions: <Widget>[
+          // The Semantics identifiers in this screen are what the Maestro flows
+          // in .maestro/ select on. A tooltip is not exposed as text on
+          // Android 9+, and a hint disappears once the field has content, so
+          // neither is a stable selector.
+          if (isEditing)
+            Semantics(
+              identifier: 'note_delete_button',
+              child: IconButton(
+                tooltip: 'Delete',
+                icon: const Icon(Icons.delete_outline),
+                onPressed: _delete,
+              ),
+            ),
+          Semantics(
+            identifier: 'note_save_button',
+            child: IconButton.filled(
+              tooltip: 'Save',
+              icon: const Icon(Icons.check_rounded),
+              onPressed: _save,
+              // The app bar's icon colour would otherwise win over the
+              // filled button's and draw a dark tick on the violet.
+              style: IconButton.styleFrom(
+                foregroundColor: theme.colorScheme.onPrimary,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
         ],
       ),
       body: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            TextField(
-              controller: _title,
-              maxLines: 1,
-              // Matches the 200-byte cap in the security rules.
-              maxLength: 200,
-              textCapitalization: TextCapitalization.sentences,
-              style: Theme.of(context).textTheme.titleLarge,
-              decoration: const InputDecoration(
-                hintText: 'Title',
-                border: InputBorder.none,
-                counterText: '',
+            Semantics(
+              identifier: 'note_title_field',
+              child: TextField(
+                controller: _title,
+                maxLines: 1,
+                // Matches the 200-byte cap in the security rules.
+                maxLength: 200,
+                textCapitalization: TextCapitalization.sentences,
+                style: theme.textTheme.headlineSmall,
+                decoration: InputDecoration(
+                  hintText: 'Title',
+                  hintStyle: theme.textTheme.headlineSmall?.copyWith(
+                    color: theme.colorScheme.outline,
+                  ),
+                  border: InputBorder.none,
+                  counterText: '',
+                  isDense: true,
+                ),
               ),
             ),
-            const Divider(),
+            const SizedBox(height: 4),
+            // A short violet rule under the title, after the icon's style.
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 12),
             Expanded(
-              child: TextField(
-                controller: _body,
-                maxLines: null,
-                expands: true,
-                textAlignVertical: TextAlignVertical.top,
-                textCapitalization: TextCapitalization.sentences,
-                keyboardType: TextInputType.multiline,
-                decoration: const InputDecoration(
-                  hintText: 'Write something…',
-                  border: InputBorder.none,
+              child: Semantics(
+                identifier: 'note_body_field',
+                child: TextField(
+                  controller: _body,
+                  maxLines: null,
+                  expands: true,
+                  textAlignVertical: TextAlignVertical.top,
+                  textCapitalization: TextCapitalization.sentences,
+                  keyboardType: TextInputType.multiline,
+                  style: theme.textTheme.bodyLarge,
+                  decoration: InputDecoration(
+                    hintText: 'Write something…',
+                    hintStyle: theme.textTheme.bodyLarge?.copyWith(
+                      color: theme.colorScheme.outline,
+                    ),
+                    border: InputBorder.none,
+                  ),
                 ),
               ),
             ),

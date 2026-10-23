@@ -1,17 +1,30 @@
-# notes
+# Evos
 
-A new Flutter project.
+A Flutter subscription app. Sign in with a mobile number and SMS code (Supabase), subscribe through Cashfree UPI AutoPay, then use a web page inside the app. It began as a notes app; the notes code is still here but unreachable.
 
-## Getting Started
+## Quick start
 
-This project is a starting point for a Flutter application.
+```sh
+flutter pub get
+flutter run
+```
 
-A few resources to get you started if this is your first Flutter project:
+`flutter run` talks to the real backend and sends real SMS. For test mode (no SMS, code 123456, simulated payment) use `flutter run --dart-define=SUPABASE_URL=`. See [docs/09-deep-link-onboarding.md](docs/09-deep-link-onboarding.md).
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+## Documentation
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Everything is in [docs/](docs/README.md):
+
+- [Overview](docs/01-overview.md)
+- [Architecture](docs/02-architecture.md)
+- [App flow](docs/03-app-flow.md)
+- [Data model](docs/04-data-model.md)
+- [Setup and build](docs/05-setup-and-build.md)
+- [Conventions](docs/06-conventions.md)
+- [Known issues](docs/07-known-issues.md)
+- [End-to-end testing](docs/08-e2e-testing.md)
+- [Phone sign-in, paywall and web page](docs/09-deep-link-onboarding.md)
+- [Analytics](docs/10-analytics.md)
+- [AI agent context](docs/ai/AGENT_CONTEXT.md) and [task log](docs/ai/TASK_LOG.md)
+
+Docs are updated in the same change as the code they describe.

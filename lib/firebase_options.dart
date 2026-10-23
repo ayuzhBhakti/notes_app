@@ -49,7 +49,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '686456708333',
     projectId: 'notes-f36b3',
     storageBucket: 'notes-f36b3.firebasestorage.app',
-    iosBundleId: 'com.spacewire.notes',
+    iosBundleId: 'com.spacewire.evos',
     iosClientId:
         '686456708333-f3jcg4edjglfpocpv69uvggappupp0h8.apps.googleusercontent.com',
   );

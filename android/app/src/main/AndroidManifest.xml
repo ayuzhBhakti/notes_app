@@ -5,9 +5,10 @@
          src/debug is harmless, the merger dedupes identical permission nodes. -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="notes"
+        android:label="Evos"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -29,7 +30,44 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Hands incoming link URLs to Flutter, where DeepLinkService
+                 reads them. On by default in current Flutter; stated so the
+                 behaviour does not depend on that default. -->
+            <meta-data
+                android:name="flutter_deeplinking_enabled"
+                android:value="true"/>
+            <!-- HTTPS App Link that starts the onboarding flow. The host must
+                 equal kDeepLinkHost in lib/services/deep_link_service.dart.
+                 autoVerify only succeeds once that domain serves
+                 /.well-known/assetlinks.json listing this app's signing
+                 certificate; until then Android opens the link in a browser
+                 unless the user enables it for this app in system settings. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https"/>
+                <data android:host="notes-f36b3.web.app"/>
+                <data android:pathPrefix="/onboarding"/>
+            </intent-filter>
         </activity>
+        <!-- Facebook (Meta) SDK. The two "false" entries stop it from starting
+             and from logging anything by itself, so a build that still has
+             the placeholder keys never contacts Facebook. MetaSdk.kt switches
+             both back on once the keys in res/values/analytics_keys.xml are
+             real. -->
+        <meta-data
+            android:name="com.facebook.sdk.ApplicationId"
+            android:value="@string/facebook_app_id"/>
+        <meta-data
+            android:name="com.facebook.sdk.ClientToken"
+            android:value="@string/facebook_client_token"/>
+        <meta-data
+            android:name="com.facebook.sdk.AutoInitEnabled"
+            android:value="false"/>
+        <meta-data
+            android:name="com.facebook.sdk.AutoLogAppEventsEnabled"
+            android:value="false"/>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
@@ -42,6 +80,12 @@
 
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
+        <!-- UPI apps offered on the paywall. Must list every package in
+             UPI_APPS in payments/PaymentsChannel.kt. -->
+        <package android:name="com.phonepe.app"/>
+        <package android:name="com.google.android.apps.nbu.paisa.user"/>
+        <package android:name="net.one97.paytm"/>
+        <package android:name="in.org.npci.upiapp"/>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>

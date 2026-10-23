@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 108 108">
+  <!-- Evos app icon. The mark is on the 108-unit adaptive-icon grid. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7C3AED"/>
+      <stop offset="1" stop-color="#4C1D95"/>
+    </linearGradient>
+    <clipPath id="shape"><rect width="108" height="108" rx="23.76"/></clipPath>
+  </defs>
+  <g clip-path="url(#shape)">
+    <rect width="108" height="108" fill="url(#bg)"/>
+  <g transform="translate(54 54) scale(1.12) translate(-54 -54)">
+    <rect x="36" y="38" width="8" height="34" rx="4" fill="#FFFFFF"/>
+    <rect x="36" y="38" width="28" height="8" rx="4" fill="#FFFFFF"/>
+    <rect x="36" y="51" width="22" height="8" rx="4" fill="#FFFFFF"/>
+    <rect x="36" y="64" width="28" height="8" rx="4" fill="#FFFFFF"/>
+    <circle cx="71" cy="33" r="3.5" fill="#FBBF24"/>
+  </g>
+  </g>
+</svg>

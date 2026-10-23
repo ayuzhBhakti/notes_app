@@ -1,0 +1,15 @@
+{
+  "hosting": {
+    "public": "web_links",
+    "appAssociation": "NONE",
+    "rewrites": [
+      { "source": "/onboarding/**", "destination": "/onboarding/index.html" }
+    ],
+    "headers": [
+      {
+        "source": "/.well-known/assetlinks.json",
+        "headers": [{ "key": "Content-Type", "value": "application/json" }]
+      }
+    ]
+  }
+}
