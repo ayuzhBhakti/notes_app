@@ -1,5 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemChrome, DeviceOrientation;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 
@@ -16,6 +17,12 @@ import 'utils/errors.dart';
 
 Future<void> main() async {
   final WidgetsBinding binding = WidgetsFlutterBinding.ensureInitialized();
+
+  // The app is portrait-only. The Android manifest also locks the activity
+  // (covering the native splash); this covers the Flutter side and iOS.
+  await SystemChrome.setPreferredOrientations(const <DeviceOrientation>[
+    DeviceOrientation.portraitUp,
+  ]);
 
   // Before runApp, so this observer is asked about an incoming link ahead of
   // the one WidgetsApp registers. See DeepLinkService.start.

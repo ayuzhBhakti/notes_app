@@ -114,7 +114,11 @@ Everything is in [supabase/](../supabase/), adapted from CashAlert's. It is depl
 | Video row | [migrations/20261014120000_paywall_video.sql](../supabase/migrations/20261014120000_paywall_video.sql) | Adds `paywall_video_url` |
 | SMS settings rows | [migrations/20261013130000_sms_config_rows.sql](../supabase/migrations/20261013130000_sms_config_rows.sql) | Adds the four SMS rows where the first migration ran before it had them |
 | Tables and policies | [migrations/20261013120000_evos_init.sql](../supabase/migrations/20261013120000_evos_init.sql) | `app_config`, `profiles`, `subscription_payments`, the `has_active_subscription()` function, and a trigger that makes a profile for each new sign-in |
-| Per-source web page | [migrations/20261022130000_webview_sources.sql](../supabase/migrations/20261022130000_webview_sources.sql) | `webview_sources` (`source`, `webview_url`, `is_active`), public-read like `app_config`. **Pushed 2026-10-22**, no rows yet. The app overrides `webview_url` with the active row matching its install source |
+| Per-source web page | [migrations/20261022130000_webview_sources.sql](../supabase/migrations/20261022130000_webview_sources.sql) | `webview_sources` (`source`, `webview_url`, `is_active`), public-read like `app_config`. **Pushed 2026-10-22**. The app overrides `webview_url` with the active row matching its install source |
+| Per-source identity (Phase A) | [migrations/20261024120000_webview_source_identity.sql](../supabase/migrations/20261024120000_webview_source_identity.sql) | Adds the visual-identity columns to `webview_sources` (name, logo, colour, every `paywall_*` field, login carousel; drops `NOT NULL` on `webview_url`) and the private `admin_panel_secret` row. **Pushed 2026-10-24** (27 columns live, `admin_panel_secret` blank). See "Per-source app identity" below |
+| Per-source pricing (Phase B) | [migrations/20261024130000_source_pricing.sql](../supabase/migrations/20261024130000_source_pricing.sql) | Adds `plan_name`, `cashfree_plan_id`, `cashfree_trial_amount`, `cashfree_recurring_amount` (text, nullable) to `webview_sources`. **Pushed 2026-10-24** (31 columns live). Read server-side by `create-cashfree-subscription` |
+| `admin-source-config` | [functions/admin-source-config/](../supabase/functions/admin-source-config/index.ts) | Service-role writer for `webview_sources`, behind the `x-admin-secret` header; backs the `admin/` panel. `verify_jwt = false` in `config.toml`. **DEPLOYED 2026-10-24 and E2E-tested.** `admin_panel_secret` is blank, so the panel is locked until the owner sets it in the Table Editor |
+| `create-cashfree-subscription` (source-aware since Phase B) | [functions/create-cashfree-subscription/](../supabase/functions/create-cashfree-subscription/index.ts) | Reads `install_source` from the request body and overlays the source's plan/price before charging (`applySourcePricing`). **Phase B edit DEPLOYED 2026-10-24** |
 | `sms-hook` | [functions/sms-hook/](../supabase/functions/sms-hook/index.ts) | Supabase Auth makes and checks the code; this delivers it through Fast2SMS |
 | `create-cashfree-subscription` | [functions/create-cashfree-subscription/](../supabase/functions/create-cashfree-subscription/index.ts) | Creates the mandate with the Cashfree id and secret and returns a session id |
 | `verify-cashfree-subscription` | [functions/verify-cashfree-subscription/](../supabase/functions/verify-cashfree-subscription/index.ts) | Asks Cashfree whether the mandate went through and records the payment |
@@ -240,23 +244,33 @@ flowchart LR
 | `WebScreen` | [web_screen.dart](../lib/screens/onboarding/web_screen.dart) | The WebView (`webview_flutter`, `webview_flutter_android`) and its settings; `url_launcher` for non-web links |
 | `AppGate` | [app_gate.dart](../lib/screens/app_gate.dart) | Root widget; renders the screen for the current stage |
 
-### Per-source web page: the `webview_sources` table
+### Per-source app identity: the `webview_sources` table
 
-The web page a subscriber lands on can depend on where the install came from. A Play link tagged `utm_source=filmyface` makes the app load the page saved for `filmyface`, instead of the global `webview_url`.
+The whole app face can depend on where the install came from. A Play link tagged `utm_source=filmyface` makes the app use the name, logo, theme colour, paywall fields, login carousel and web page saved for `filmyface`, instead of the global `app_config` values — one install source behaves like a separate white-label app.
+
+**Phase A (2026-10-24): visual identity.** Name, logo, colour, every paywall field, the login carousel and `webview_url`.
+
+**Phase B (2026-10-24): plan and prices.** `cashfree_trial_amount`, `cashfree_recurring_amount`, `cashfree_plan_id`, `plan_name` are now per-source columns too. The paywall *display* reads them through the same overlay as everything else; the amount a customer is *charged* is read **server-side** by `create-cashfree-subscription` (`loadAppConfig(installSource)` → `applySourcePricing`, best-effort, global price on any error). The device sends only its install source in the request body, never an amount, so display and charge both come from the same table row and cannot drift.
+
+> **Gotcha (found 2026-10-26): `cashfree_plan_id` beats the inline recurring amount.** `buildPlanDetails()` uses `plan_id` when it is set and ignores `cashfree_recurring_amount`. The global `cashfree_plan_id` is currently set (`plan_1788962992020_…`), so a per-source `cashfree_recurring_amount` changes only the **paywall display**, not the **actual monthly charge** — the Cashfree plan's own amount is charged. To really charge a different recurring amount for a source, give that source its own `cashfree_plan_id` (a Cashfree plan with that amount) **or** blank the global `cashfree_plan_id` so inline amounts are used. The per-source **trial** (authorization) amount is always honoured.
 
 | Column | Meaning |
 |--------|---------|
 | `source` | The install source, lowercased: the `utm_source` of the Play referrer. Primary key |
-| `webview_url` | The page to load for that source |
 | `is_active` | `false` hides the row (the policy returns active rows only), without deleting it |
+| one column per app_config key | Named exactly as its `app_config` key (`app_name`, `app_logo_url`, `theme_color`, every `paywall_*` field, `login_slide_images`, `login_slide_titles`, `webview_url`, …). `NULL` = inherit the global value; non-NULL (even empty) = override (empty hides that part) |
+
+Added by migration `20261024120000_webview_source_identity.sql` (Phase A columns) on top of `20261022130000_webview_sources.sql` (the original `source`/`webview_url`/`is_active`).
 
 How it works:
 
-- **The source is remembered on the device.** `main()` parses the install referrer once (see below), and saves the source (lowercased) in `install_source_v1` (`OnboardingStore.installSource`). It is read on every later launch through `installSourceProvider`, because the web page step comes many launches after the referrer was read.
-- **The lookup is one filtered read.** `SupabaseEvosBackend.fetchConfig(installSource)` fetches `app_config` as before, then, for a known source, reads the one matching `webview_sources` row and overrides the `webview_url` value. The client never downloads the whole table.
-- **Fallback chain:** the source's active row → the global `app_config.webview_url` → the "You're all set" screen. An unattributed install (`unknown`, organic, or a phone with a work account that makes Play strip the referrer) always gets the global page.
-- **Best-effort.** The `webview_sources` read is wrapped so a missing row (the table is live but empty as of 2026-10-22) or any error just leaves the global `webview_url`; the rest of the settings are never lost.
-- **Cached like the rest of the settings.** The resolved `webview_url` is saved in `evos_config_v1`, so the next launch is instant and offline-correct (the source does not change after install).
+- **The source is remembered on the device.** `main()` parses the install referrer once (see below), and saves the source (lowercased) in `install_source_v1` (`OnboardingStore.installSource`). It is read on every later launch through `installSourceProvider`, because the paywall/web step comes many launches after the referrer was read.
+- **The lookup is one filtered read.** `SupabaseEvosBackend.fetchConfig(installSource)` fetches `app_config` as before, then, for a known active source, reads the one matching `webview_sources` row and overlays **every non-null column** onto the config map (`_applySourceOverrides` → the pure `mergeSourceRow`). The column names are the `app_config` keys, so a column added later needs no read-path change. The client never downloads the whole table.
+- **Fallback chain:** the source's active-row column → the global `app_config` value → the field's built-in default. An unattributed install (`unknown`, organic, or a phone with a work account that makes Play strip the referrer) always gets the global settings.
+- **Best-effort.** The `webview_sources` read is wrapped so a missing table/row or any error just leaves the global settings; the rest of the config is never lost.
+- **Cached like the rest of the settings.** The resolved, overlaid rows are saved in `evos_config_v1`, so the next launch is instant and offline-correct (the source does not change after install).
+
+**Writing the table — the admin panel.** The table has no anon/authenticated write policy; it is written only through the `admin-source-config` edge function (service role), gated by the `x-admin-secret` header against the private `app_config.admin_panel_secret` row (blank = locked). The function only writes the allowlisted columns in `supabase/functions/_shared/source_config.ts` — secrets are not columns of this table and can never be injected. The standalone static panel lives in `admin/` (see its README).
 
 ### The Play Store referrer
 
@@ -313,7 +327,7 @@ The project is `sqvlgiqypqvjykczuhgz` (`https://sqvlgiqypqvjykczuhgz.supabase.co
 2. **Apply the schema:** `supabase db push`.
 3. **Deploy the functions** (step 5 below, done by the script) so the hook has a URL to point at.
 4. **SMS.** (The Phone provider form will not save with empty Twilio fields; any placeholder text works, and the hook makes them unused.) Authentication → Hooks → Send SMS hook → HTTPS, `https://sqvlgiqypqvjykczuhgz.supabase.co/functions/v1/sms-hook`; save and copy the secret. Authentication → Sign In / Providers → Phone → enable. Then fill four `app_config` rows: `fast2sms`, `fast2sms_dlt_sender_id` and `fast2sms_dlt_te_id` with the values from CashAlert's `app_config`, and `send_sms_hook_secret` with the secret just copied. With CashAlert's template the SMS wording is CashAlert's until Evos has its own DLT template.
-5. **Deploy the functions:** `supabase functions deploy` for each of `sms-hook`, `create-cashfree-subscription`, `verify-cashfree-subscription`, `cashfree-webhook`. Type-check first with `deno check` (Deno is not installed on this machine).
+5. **Deploy the functions:** `supabase functions deploy` for each of `sms-hook`, `create-cashfree-subscription`, `verify-cashfree-subscription`, `cashfree-webhook`. Type-check first with `deno check <fn>/index.ts` (Deno is installed at `/opt/homebrew/bin/deno`; `supabase functions deploy` bundles via esbuild and does not type-check).
 6. **Fill in `app_config`:** `cashfree_app_id`, `cashfree_secret_key`, `customer_email_domain`, and the brand and paywall rows. Leave `cashfree_environment` as `sandbox` until tested.
 7. **Cashfree dashboard:** enable Subscriptions, add the webhook URL `https://<ref>.supabase.co/functions/v1/cashfree-webhook`, and ask Cashfree to whitelist the package `com.spacewire.evos` for production.
 8. **Build the app.** Nothing to pass: a plain `flutter run` or `flutter build` uses this project. The publishable key is safe to ship; row-level security is what protects the data. To point a build at another project:

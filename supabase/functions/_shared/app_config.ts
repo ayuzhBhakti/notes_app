@@ -64,6 +64,57 @@ export async function loadConfigMap(
   return map;
 }
 
+/**
+ * The only webview_sources columns a source may override server-side when
+ * charging. Visual identity (name, logo, paywall text) is irrelevant to
+ * Cashfree and stays global here; only the plan and amounts can differ.
+ */
+export const SOURCE_PRICING_KEYS = [
+  "cashfree_trial_amount",
+  "cashfree_recurring_amount",
+  "cashfree_plan_id",
+  "plan_name",
+] as const;
+
+/**
+ * Overlays the active webview_sources row for [installSource] onto [map], for
+ * the pricing keys only. Best-effort: a missing table/row or any error leaves
+ * the global values untouched, so a failed lookup charges the known global
+ * price rather than failing the payment. The amount a customer pays is decided
+ * here, from the table — never from anything the client sent.
+ */
+export async function applySourcePricing(
+  client: SupabaseClient,
+  map: AppConfigMap,
+  installSource: string | null | undefined,
+): Promise<void> {
+  const source = installSource?.trim().toLowerCase();
+  if (!source || source === "unknown") return;
+  try {
+    const { data } = await client
+      .from("webview_sources")
+      .select(SOURCE_PRICING_KEYS.join(","))
+      .eq("source", source)
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle();
+    if (!data) return;
+    // maybeSingle() with a string select is typed loosely; narrow via unknown.
+    const row = data as unknown as Record<string, unknown>;
+    for (const key of SOURCE_PRICING_KEYS) {
+      const value = row[key];
+      // NULL inherits the global value; a real value overrides it.
+      if (typeof value === "string" && value.trim() !== "") {
+        map[key] = value.trim();
+      } else if (typeof value === "number") {
+        map[key] = String(value);
+      }
+    }
+  } catch (_) {
+    // Keep the global pricing.
+  }
+}
+
 /** The table row wins; the function secret of the same name is the fallback. */
 function resolve(map: AppConfigMap, key: string): string {
   return pickString(map[key], Deno.env.get(key.toUpperCase()));
@@ -71,8 +122,11 @@ function resolve(map: AppConfigMap, key: string): string {
 
 export async function loadAppConfig(
   client: SupabaseClient = createServiceClient(),
+  installSource?: string | null,
 ): Promise<ResolvedAppConfig> {
   const map = await loadConfigMap(client);
+  // Per-source plan/prices override the global ones (Phase B). Best-effort.
+  await applySourcePricing(client, map, installSource);
 
   const cashfreeAppId = resolve(map, "cashfree_app_id");
   const cashfreeSecretKey = resolve(map, "cashfree_secret_key");

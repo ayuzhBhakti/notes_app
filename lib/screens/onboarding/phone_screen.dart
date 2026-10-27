@@ -878,15 +878,16 @@ class _IndianMobileFormatter extends TextInputFormatter {
     TextEditingValue newValue,
   ) {
     String digits = newValue.text.replaceAll(RegExp(r'\D'), '');
-    // Only for text that arrived in one go. An eleventh digit typed after a
-    // number that happens to start with 91 must not eat its first two.
-    final bool arrivedWhole = newValue.text.length - oldValue.text.length > 1;
-    if (arrivedWhole && digits.length > 10) {
-      if (digits.startsWith('91')) {
-        digits = digits.substring(2);
-      } else if (digits.startsWith('0')) {
-        digits = digits.substring(1);
-      }
+    // A full number pasted, autofilled, or tapped from a keyboard suggestion
+    // keeps only its 10-digit national part. This is length-based, not based on
+    // how the text arrived (an autofilled suggestion is not seen as a paste),
+    // and only triggers at exactly country-code + 10 digits, so typing an
+    // eleventh digit after a number that happens to start with 91 never eats
+    // its first two.
+    if (digits.length == 12 && digits.startsWith('91')) {
+      digits = digits.substring(2); // +91 country code
+    } else if (digits.length == 11 && digits.startsWith('0')) {
+      digits = digits.substring(1); // trunk 0
     }
     if (digits.length > 10) digits = digits.substring(0, 10);
     if (digits == newValue.text) return newValue;

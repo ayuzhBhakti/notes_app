@@ -298,7 +298,10 @@ final Provider<EvosBackend> evosBackendProvider = Provider<EvosBackend>((
 final Provider<PaymentGateway> paymentGatewayProvider =
     Provider<PaymentGateway>(
   (Ref ref) => isSupabaseConfigured
-      ? CashfreePaymentGateway(ref.watch(evosBackendProvider))
+      ? CashfreePaymentGateway(
+          ref.watch(evosBackendProvider),
+          installSource: ref.watch(onboardingStoreProvider).installSource,
+        )
       : const SimulatedPaymentGateway(),
 );
 

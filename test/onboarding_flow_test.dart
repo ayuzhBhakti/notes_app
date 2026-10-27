@@ -243,6 +243,27 @@ void main() {
       expect(find.text(phone), findsOneWidget);
     });
 
+    testWidgets('an autofilled 91-prefixed number keeps all 10 national digits',
+        (tester) async {
+      await launch(tester);
+
+      // A keyboard suggestion / autofill of the full number, no + or spaces
+      // (the case that used to keep only the first 10: 9198765432).
+      await tester.enterText(find.byType(TextField), '919876543210');
+      await tester.pump();
+
+      expect(find.text(phone), findsOneWidget);
+    });
+
+    testWidgets('a leading trunk 0 is dropped', (tester) async {
+      await launch(tester);
+
+      await tester.enterText(find.byType(TextField), '09876543210');
+      await tester.pump();
+
+      expect(find.text(phone), findsOneWidget);
+    });
+
     testWidgets('Send code texts the number and opens the code screen',
         (tester) async {
       final Harness h = await launch(tester);

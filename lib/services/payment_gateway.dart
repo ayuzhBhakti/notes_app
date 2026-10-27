@@ -250,16 +250,22 @@ class MethodChannelPaymentsPlatform implements PaymentsPlatform {
 class CashfreePaymentGateway implements PaymentGateway {
   CashfreePaymentGateway(
     this._backend, {
+    String? installSource,
     PaymentsPlatform? platform,
     this.holdLimit = const Duration(seconds: 6),
     this.holdInterval = const Duration(seconds: 1),
     this.backgroundLimit = const Duration(seconds: 60),
     this.backgroundInterval = const Duration(seconds: 3),
     this.callbackGrace = const Duration(milliseconds: 1500),
-  }) : _platform = platform ?? MethodChannelPaymentsPlatform();
+  })  : _installSource = installSource?.trim().toLowerCase(),
+        _platform = platform ?? MethodChannelPaymentsPlatform();
 
   final EvosBackend _backend;
   final PaymentsPlatform _platform;
+
+  /// The saved Play install source, passed to the server so a per-source plan
+  /// and price can be used. Fixed per install.
+  final String? _installSource;
 
   /// The longest the processing screen holds the user, per wait.
   final Duration holdLimit;
@@ -318,8 +324,9 @@ class CashfreePaymentGateway implements PaymentGateway {
     onStage?.call(CheckoutStage.preparing);
     final SubscriptionSession session;
     try {
-      session =
-          await unlessLeft(_backend.createSubscription().timeout(holdLimit));
+      session = await unlessLeft(
+        _backend.createSubscription(_installSource).timeout(holdLimit),
+      );
     } on TimeoutException {
       throw const PaymentFailure(PaymentError.slowNetwork);
     }

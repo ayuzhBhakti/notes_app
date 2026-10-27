@@ -7,3 +7,10 @@ verify_jwt = false
 
 [functions.sms-hook]
 verify_jwt = false
+
+# The admin panel calls this from a browser with the publishable key (not a JWT)
+# and authenticates itself with the x-admin-secret header, so platform JWT
+# verification must be off or the gateway would reject it before the secret
+# check runs.
+[functions.admin-source-config]
+verify_jwt = false

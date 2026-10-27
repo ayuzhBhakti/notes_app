@@ -6,6 +6,7 @@ import 'package:evos/models/onboarding.dart';
 import 'package:evos/models/remote_config.dart';
 import 'package:evos/screens/onboarding/paywall_screen.dart';
 import 'package:evos/services/deep_link_service.dart';
+import 'package:evos/services/evos_backend.dart';
 import 'package:evos/services/install_referrer_service.dart';
 import 'package:evos/utils/validators.dart';
 
@@ -407,6 +408,69 @@ void main() {
         }).showStrikePrice,
         isFalse,
       );
+    });
+  });
+
+  group('per-source identity overlay (mergeSourceRow)', () {
+    Map<String, String> global() => <String, String>{
+          'app_name': 'Evos',
+          'theme_color': '#6D28D9',
+          'webview_url': 'https://global.example.com',
+        };
+
+    test('a non-null column overrides the matching global key', () {
+      final Map<String, String> config = global();
+      SupabaseEvosBackend.mergeSourceRow(config, <String, dynamic>{
+        'source': 'filmyface',
+        'is_active': true,
+        'app_name': 'FilmyFace',
+        'theme_color': '#E11D48',
+        'webview_url': 'https://filmyface.example.com',
+      });
+      expect(config['app_name'], 'FilmyFace');
+      expect(config['theme_color'], '#E11D48');
+      expect(config['webview_url'], 'https://filmyface.example.com');
+      // And the whole config still reads as a branded RemoteConfig.
+      final RemoteConfig brand = RemoteConfig.fromRows(config);
+      expect(brand.appName, 'FilmyFace');
+      expect(brand.seedColor, const Color(0xFFE11D48));
+    });
+
+    test('a null column inherits the global value', () {
+      final Map<String, String> config = global();
+      SupabaseEvosBackend.mergeSourceRow(config, <String, dynamic>{
+        'source': 'partner',
+        'is_active': true,
+        'app_name': 'Partner',
+        'theme_color': null, // inherit
+        'webview_url': null, // inherit
+      });
+      expect(config['app_name'], 'Partner');
+      expect(config['theme_color'], '#6D28D9');
+      expect(config['webview_url'], 'https://global.example.com');
+    });
+
+    test('an empty string is a deliberate override, not an inherit', () {
+      final Map<String, String> config = global()
+        ..['paywall_subtitle'] = 'Global subtitle';
+      SupabaseEvosBackend.mergeSourceRow(config, <String, dynamic>{
+        'source': 'partner',
+        'paywall_subtitle': '', // hide it for this source
+      });
+      expect(config['paywall_subtitle'], '');
+    });
+
+    test('meta columns and non-string values are handled', () {
+      final Map<String, String> config = global();
+      SupabaseEvosBackend.mergeSourceRow(config, <String, dynamic>{
+        'source': 'partner',
+        'is_active': true,
+        'paywall_show_strike_price': false, // stringified
+      });
+      // source/is_active are not treated as settings.
+      expect(config.containsKey('source'), isFalse);
+      expect(config.containsKey('is_active'), isFalse);
+      expect(config['paywall_show_strike_price'], 'false');
     });
   });
 

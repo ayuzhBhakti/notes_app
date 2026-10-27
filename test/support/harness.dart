@@ -64,6 +64,11 @@ class FakeBackend implements EvosBackend {
   // A webview_url per install source, overriding config['webview_url'] when
   // fetchConfig is called with a matching source. Mirrors webview_sources.
   Map<String, String> webUrlBySource = <String, String>{};
+  // Full per-source overrides (name, colour, paywall fields, ...), overlaid on
+  // [config] when fetchConfig is called with a matching source. Mirrors the
+  // non-null columns of a webview_sources row.
+  Map<String, Map<String, String>> overridesBySource =
+      <String, Map<String, String>>{};
   // How long the settings take to answer, as on a slow first launch.
   Duration configDelay = Duration.zero;
   bool subscribed = false;
@@ -110,8 +115,13 @@ class FakeBackend implements EvosBackend {
     if (configDelay > Duration.zero) await Future<void>.delayed(configDelay);
     if (configError != null) throw BackendFailure(configError!);
     final String? source = installSource?.trim().toLowerCase();
-    if (source == null || !webUrlBySource.containsKey(source)) return config;
-    return <String, String>{...config, 'webview_url': webUrlBySource[source]!};
+    if (source == null) return config;
+    return <String, String>{
+      ...config,
+      if (overridesBySource.containsKey(source)) ...overridesBySource[source]!,
+      if (webUrlBySource.containsKey(source))
+        'webview_url': webUrlBySource[source]!,
+    };
   }
 
   @override
@@ -121,7 +131,7 @@ class FakeBackend implements EvosBackend {
   }
 
   @override
-  Future<SubscriptionSession> createSubscription() =>
+  Future<SubscriptionSession> createSubscription(String? installSource) =>
       throw UnimplementedError('Payments go through FakeGateway.');
 
   @override

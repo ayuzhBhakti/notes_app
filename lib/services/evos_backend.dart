@@ -89,13 +89,18 @@ abstract class EvosBackend {
   Future<void> signOut();
 
   /// The public rows of `app_config`, as `key -> value`. When [installSource]
-  /// names a source with a `webview_sources` row, its URL overrides the global
-  /// `webview_url`; otherwise the global one is returned unchanged.
+  /// names a source with an active `webview_sources` row, every non-null column
+  /// of that row overrides the matching global key (name, logo, colour, every
+  /// paywall field, the login carousel and `webview_url`); a null column, no
+  /// row, or an unattributed source returns the global settings unchanged.
   Future<Map<String, String>> fetchConfig(String? installSource);
 
   Future<bool> hasActiveSubscription();
 
-  Future<SubscriptionSession> createSubscription();
+  /// [installSource] (the saved Play `utm_source`, or null) lets the server
+  /// pick a per-source plan and price. It is only a selector: the amount
+  /// charged is read on the server, never sent from here.
+  Future<SubscriptionSession> createSubscription(String? installSource);
 
   /// True once Cashfree reports the mandate authorised.
   Future<bool> verifySubscription(String subscriptionId);
@@ -197,36 +202,63 @@ class SupabaseEvosBackend implements EvosBackend {
         final String? source = installSource?.trim().toLowerCase();
         // 'unknown' is the parser's word for an unattributed install.
         if (source != null && source.isNotEmpty && source != 'unknown') {
-          await _applySourceWebUrl(config, source);
+          await _applySourceOverrides(config, source);
         }
         return config;
       });
 
-  /// Overrides `webview_url` with the active `webview_sources` row for [source],
-  /// if any. Best-effort: a missing table (migration not pushed yet), no row,
-  /// or any error leaves the global URL in place. A per-source page is an
+  /// Column names in `webview_sources` that are not settings to overlay: the
+  /// primary key and the active flag. Everything else is a per-source override
+  /// of the matching `app_config` key, so a column added later flows through
+  /// here without a code change.
+  static const Set<String> _sourceMetaColumns = <String>{'source', 'is_active'};
+
+  /// Overlays the active `webview_sources` row for [source] onto [config]:
+  /// every non-null column replaces the global `app_config` value of the same
+  /// key (a NULL column inherits the global value; an empty string is a real
+  /// override that hides that part of the screen).
+  ///
+  /// Best-effort: a missing table (migration not pushed yet), no row, or any
+  /// error leaves the global settings in place. Per-source identity is an
   /// enhancement and must never cost the rest of the settings, so this is kept
   /// out of `_guard` and swallows its own errors.
-  Future<void> _applySourceWebUrl(
+  Future<void> _applySourceOverrides(
     Map<String, String> config,
     String source,
   ) async {
     try {
       final List<Map<String, dynamic>> matches = await _client
           .from('webview_sources')
-          .select('webview_url')
+          .select()
           .eq('source', source)
           // The RLS policy already hides inactive rows; this is a second guard
-          // so a loosened policy could never serve a disabled partner URL.
+          // so a loosened policy could never serve a disabled partner's brand.
           .eq('is_active', true)
           .limit(1);
-      final Object? url =
-          matches.isNotEmpty ? matches.first['webview_url'] : null;
-      if (url is String && url.trim().isNotEmpty) {
-        config['webview_url'] = url.trim();
-      }
+      if (matches.isEmpty) return;
+      mergeSourceRow(config, matches.first);
     } catch (_) {
-      // Keep the global webview_url.
+      // Keep the global settings.
+    }
+  }
+
+  /// Overlays one `webview_sources` [row] onto [config] in place: every column
+  /// that is not meta and not null replaces the global value of the same key.
+  /// Pure (no I/O) so the merge rules can be tested without a client.
+  ///
+  /// RemoteConfig.fromRows parses everything from strings (bools as
+  /// 'true'/'false', numbers as text), so a non-string column is stringified.
+  /// A null column inherits the global value; an empty string is kept, because
+  /// it is a deliberate override that hides that part of the screen.
+  static void mergeSourceRow(
+    Map<String, String> config,
+    Map<String, dynamic> row,
+  ) {
+    for (final MapEntry<String, dynamic> entry in row.entries) {
+      if (_sourceMetaColumns.contains(entry.key)) continue;
+      final Object? value = entry.value;
+      if (value == null) continue;
+      config[entry.key] = value is String ? value : value.toString();
     }
   }
 
@@ -240,10 +272,17 @@ class SupabaseEvosBackend implements EvosBackend {
       });
 
   @override
-  Future<SubscriptionSession> createSubscription() => _guard(() async {
+  Future<SubscriptionSession> createSubscription(String? installSource) =>
+      _guard(() async {
         await _ensureSession();
-        final FunctionResponse response =
-            await _client.functions.invoke('create-cashfree-subscription');
+        final String? source = installSource?.trim().toLowerCase();
+        final FunctionResponse response = await _client.functions.invoke(
+          'create-cashfree-subscription',
+          body: <String, Object?>{
+            if (source != null && source.isNotEmpty && source != 'unknown')
+              'install_source': source,
+          },
+        );
         final Object? data = response.data;
         if (data is! Map) throw const BackendFailure(BackendError.server);
         final Object? subscriptionId = data['subscription_id'];
@@ -406,7 +445,8 @@ class UnconfiguredEvosBackend implements EvosBackend {
   Future<bool> hasActiveSubscription() async => throw _failure;
 
   @override
-  Future<SubscriptionSession> createSubscription() async => throw _failure;
+  Future<SubscriptionSession> createSubscription(String? installSource) async =>
+      throw _failure;
 
   @override
   Future<bool> verifySubscription(String subscriptionId) async =>

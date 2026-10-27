@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Evos — Source Admin</title>
+  <style>
+    :root {
+      --bg: #f4f4f7; --card: #fff; --ink: #1d1d1f; --muted: #70707a;
+      --line: #dcdce2; --brand: #6d28d9; --danger: #c0362c; --ok: #1a7f37;
+      --focus: #6d28d9;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font: 15px/1.55 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg); color: var(--ink);
+    }
+    header {
+      background: var(--brand); color: #fff; padding: 14px 20px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    header h1 { font-size: 17px; margin: 0; font-weight: 600; }
+    header button { background: rgba(255,255,255,.18); color: #fff; border: 0; }
+    main { max-width: 1040px; margin: 0 auto; padding: 20px 16px 80px; }
+
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; margin-bottom: 16px; }
+    .card h2 { font-size: 13px; margin: 0 0 4px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+    .intro { color: var(--muted); font-size: 14px; margin: 0 0 16px; }
+
+    label { display: block; font-weight: 600; margin-bottom: 5px; font-size: 14px; }
+    input[type=text], input[type=password], input[type=url], input[type=number], textarea, select {
+      width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px;
+      font: inherit; background: #fff; color: var(--ink);
+    }
+    input:focus, textarea:focus, select:focus { outline: 2px solid var(--focus); outline-offset: -1px; border-color: var(--focus); }
+    input::placeholder { color: #b6b6c0; }
+    textarea { min-height: 64px; resize: vertical; }
+
+    .field { margin-bottom: 18px; }
+    .field .help { color: var(--muted); font-size: 12.5px; margin-top: 5px; }
+
+    /* two-column grid on wide screens */
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 20px; }
+    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } .layout { grid-template-columns: 1fr !important; } }
+
+    /* price field */
+    .money { position: relative; }
+    .money .rupee { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-weight: 600; }
+    .money input { padding-left: 26px; }
+
+    /* colour field */
+    .colour { display: flex; align-items: center; gap: 10px; }
+    .colour input[type=color] { width: 44px; height: 42px; padding: 0; border: 1px solid var(--line); border-radius: 10px; background: none; cursor: pointer; }
+    .colour input[type=text] { flex: 1; }
+    .colour .reset { white-space: nowrap; padding: 8px 10px; font-size: 13px; }
+
+    /* image field */
+    .imgfield { display: flex; gap: 12px; align-items: flex-start; }
+    .imgfield input { flex: 1; }
+    .thumb { width: 52px; height: 52px; border-radius: 10px; border: 1px dashed var(--line); object-fit: cover; background: #fafafb; flex: none; }
+    .thumb.empty { display: inline-block; }
+
+    /* repeatable rows (features / slides) */
+    .rows .row2 { display: flex; gap: 8px; margin-bottom: 8px; }
+    .rows .row2 input { flex: 1; }
+    .rows .row2 .rm { flex: none; padding: 8px 12px; color: var(--danger); border-color: var(--line); }
+    .addrow { font-size: 13px; padding: 7px 12px; }
+
+    button { padding: 10px 16px; border-radius: 10px; border: 1px solid var(--line); background: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+    button:hover { background: #f6f6f8; }
+    button.primary { background: var(--brand); color: #fff; border-color: var(--brand); }
+    button.primary:hover { filter: brightness(1.05); background: var(--brand); }
+    button.danger { color: var(--danger); border-color: var(--danger); }
+
+    details.adv { border: 1px solid var(--line); border-radius: 14px; background: var(--card); margin-bottom: 16px; }
+    details.adv > summary { cursor: pointer; padding: 16px 20px; font-weight: 600; list-style: none; }
+    details.adv > summary::-webkit-details-marker { display: none; }
+    details.adv > summary::before { content: "▸ "; color: var(--muted); }
+    details.adv[open] > summary::before { content: "▾ "; }
+    details.adv .advbody { padding: 0 20px 8px; }
+    .subhead { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 18px 0 10px; font-weight: 700; }
+
+    /* source list */
+    .source-item { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; margin-bottom: 8px; }
+    .dot { width: 18px; height: 18px; border-radius: 50%; border: 1px solid rgba(0,0,0,.1); flex: none; }
+    .source-item .name { font-weight: 700; }
+    .source-item .src { color: var(--muted); font-size: 13px; }
+    .source-item .spacer { flex: 1; }
+    .pill { font-size: 12px; padding: 3px 9px; border-radius: 99px; }
+    .pill.on { background: #e5f6ea; color: var(--ok); } .pill.off { background: #eee; color: var(--muted); }
+
+    .msg { padding: 11px 14px; border-radius: 10px; margin-bottom: 14px; display: none; font-weight: 500; }
+    .msg.err { background: #fdecea; color: var(--danger); display: block; }
+    .msg.ok { background: #e5f6ea; color: var(--ok); display: block; }
+    .hidden { display: none; }
+    .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+    /* edit layout with sticky preview */
+    .layout { display: grid; grid-template-columns: 1fr 300px; gap: 20px; align-items: start; }
+    .preview-wrap { position: sticky; top: 16px; }
+
+    /* preview card */
+    .preview { border-radius: 18px; overflow: hidden; border: 1px solid var(--line); background: #fff; }
+    .preview .pv-top { padding: 18px; color: #fff; text-align: center; }
+    .preview .pv-logo { width: 46px; height: 46px; border-radius: 12px; background: rgba(255,255,255,.25); display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 20px; overflow: hidden; }
+    .preview .pv-logo img { width: 100%; height: 100%; object-fit: cover; }
+    .preview .pv-name { font-weight: 700; margin-top: 8px; font-size: 16px; }
+    .preview .pv-body { padding: 16px 18px 20px; text-align: center; }
+    .preview .pv-title { font-weight: 700; font-size: 17px; }
+    .preview .pv-sub { color: var(--muted); font-size: 13px; margin-top: 4px; min-height: 16px; }
+    .preview .pv-price { margin: 14px 0; font-size: 14px; }
+    .preview .pv-price b { font-size: 20px; }
+    .preview .pv-cta { display: block; width: 100%; padding: 12px; border-radius: 10px; color: #fff; font-weight: 700; border: 0; }
+    .preview-note { color: var(--muted); font-size: 12px; text-align: center; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Evos — Source Admin</h1>
+    <button id="logout" class="hidden">Lock</button>
+  </header>
+  <main>
+    <div id="msg" class="msg"></div>
+
+    <!-- Login gate -->
+    <section id="login" class="card">
+      <h2>Unlock</h2>
+      <div class="field" style="margin-top:10px">
+        <label for="secret">Admin password</label>
+        <input id="secret" type="password" autocomplete="off" placeholder="Enter the admin password" />
+        <div class="help">Ask the developer if you don't have it. It's remembered only in this browser tab.</div>
+      </div>
+      <button class="primary" id="unlock">Unlock</button>
+    </section>
+
+    <!-- Source list -->
+    <section id="listView" class="card hidden">
+      <div class="toolbar" style="justify-content: space-between;">
+        <div><h2 style="margin:0">Campaign sources</h2><div class="intro" style="margin:4px 0 0">Each source shows a different app look and price, based on where the user installed from.</div></div>
+        <button class="primary" id="new">+ New source</button>
+      </div>
+      <div id="sources" style="margin-top: 16px;"></div>
+    </section>
+
+    <!-- Editor -->
+    <section id="editView" class="hidden">
+      <div class="layout">
+        <div>
+          <form id="form"></form>
+          <div class="toolbar" style="margin-top:4px">
+            <button class="primary" id="save">Save</button>
+            <button id="cancel">Cancel</button>
+            <button class="danger" id="delete">Delete</button>
+          </div>
+        </div>
+        <div class="preview-wrap">
+          <div class="preview" id="preview"></div>
+          <div class="preview-note">Live preview — blank fields use the app default.</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

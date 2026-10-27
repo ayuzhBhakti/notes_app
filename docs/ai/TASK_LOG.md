@@ -17,6 +17,137 @@ One entry per completed task, newest first. Keep entries short: what changed, wh
 
 ---
 
+## 2026-10-26 — Portrait lock + phone-input autofill fix
+
+**Request:** (1) lock the app to portrait (stop rotation); (2) a keyboard-suggested/autofilled number like `917409290026` was keeping only the first 10 digits (`9174092900`) instead of stripping the `91`.
+**Changes:**
+- **Portrait lock:** `android/app/src/main/AndroidManifest.xml` MainActivity `android:screenOrientation="portrait"` (covers the native splash too); `lib/main.dart` also calls `SystemChrome.setPreferredOrientations([portraitUp])` before `runApp` (Flutter side + iOS).
+- **Phone input:** `_IndianMobileFormatter` in `phone_screen.dart` now strips the country code **by length** — exactly 12 digits starting `91` → drop `91`; exactly 11 starting `0` → drop `0` — instead of only on a detected bulk paste (`arrivedWhole`). An autofilled suggestion isn't seen as a paste, which is why the old code fell through to "keep first 10". The length-based rule still never eats the first two digits of a real number that starts with 91 when an 11th digit is typed (only triggers at exactly CC+10).
+- Tests: `onboarding_flow_test.dart` (+2) — `919876543210` and `09876543210` both resolve to `9876543210`.
+**Verified:** `flutter analyze` clean; `flutter test` 151/151. On device (debug build reinstalled): forced `user_rotation=1` (landscape) → app stayed **portrait** on both splash and paywall (`Orientation: 0`). The autofill path is a single `commitText`, which the widget test covers; not reproducible via incremental `adb input text`, so on-device autofill is for the owner to confirm with their keyboard.
+**Docs updated:** `docs/ai/TASK_LOG.md`.
+**Follow-ups:** fold these into the next release build; the owner to confirm the keyboard-suggestion autofill on-device.
+
+---
+
+## 2026-10-26 — On-device E2E of the per-source system (Samsung Galaxy M12)
+
+**Request:** 100% end-to-end test of the whole system on the connected physical device.
+**Setup:** device had `com.spacewire.evos` 1.0.2+3 (predates Phase A/B) → uninstalled; built + installed a fresh **debug** APK from current code (real backend). Device has WiFi but **no cellular service** (SIM out of service), so no on-device SMS. Seeded a vivid test source `zz_devtest` (DevTest App, green #16A34A, trial ₹11, recurring ₹555) and set `install_source=zz_devtest` via `run-as` (debug).
+**Verified on device (screenshots):**
+- App launches against the live backend, fetches global config → phone sign-in branded **Evos** (global).
+- **Per-source identity overlay:** with `install_source=zz_devtest`, the sign-in screen rebranded to **“Welcome to DevTest App”** with the green theme (name + colour from the live `webview_sources` overlay). The green theme also applied to the Send-code button and OTP boxes.
+- **Per-source pricing/overlay on device:** the device's live-fetched config cache held the full overlay — `cashfree_trial_amount=11`, `cashfree_recurring_amount=555`, `plan_name=DevTest Monthly`, `webview_url=…/devtest` — i.e. the paywall would display ₹11/₹555.
+- **Review account:** `9931133385`/`123456` → no SMS (intercepted at `providers.dart:567`) → skipped paywall → **local Notes** screen; created and persisted a local note.
+**Findings:**
+1. **Cashfree is now LIVE in PRODUCTION** (`app_id`/`secret` set, `cashfree_environment=production`). Tapping Try Now would create a real mandate, so the on-device payment step was **not** attempted (user had assumed Cashfree was empty). Documented in AGENT_CONTEXT.
+2. **Per-source recurring amount vs. `cashfree_plan_id`:** `buildPlanDetails()` prefers `plan_id` and ignores inline amounts. The global `cashfree_plan_id` is set, so a per-source `cashfree_recurring_amount` changes the **paywall display** but NOT the **actual recurring charge** unless the source also sets its own `cashfree_plan_id` (or the global one is blank). The per-source **trial** (authorization) amount IS honoured.
+**Paywall render — DONE (2026-10-26, owner's own number `7409290026`, real SMS, OTP entered by owner):** signed in → **paywall** (the number is a pre-existing account with an expired trial, so not active → paywall). It rendered the full per-source overlay: brand "DevTest App" + green theme; heading "1-Day ₹11 Trial"; subtitle "On-device per-source test"; price ~~₹555~~ **₹11**; autopay line "₹11 today for the first 24 hours, then ₹555 every month…"; CTA "Start DevTest"; features + preview video inherited from global. **"Start DevTest" was NOT tapped** (production Cashfree = real money).
+**Not tested:** a real charge (production Cashfree — avoided); the web-page screen (needs an active subscription).
+**Cleanup:** `zz_devtest` row deleted (only `facebook`/`filmyface` remain). The owner's `917409290026` profile pre-existed (status `trial`, expired) — left as-is. Device still has the debug build signed in as `7409290026` with `install_source=zz_devtest` cached (row now gone → next fetch falls back to global); offer to reset/reinstall the release.
+**Docs updated:** `docs/ai/AGENT_CONTEXT.md`, `docs/ai/TASK_LOG.md`, `docs/09-deep-link-onboarding.md`.
+**Follow-ups:** decide how per-source recurring pricing should work given the global `plan_id` (per-source Cashfree plans, or blank the global plan_id); optional paywall visual render with a relay number; a Cashfree **sandbox** charge before trusting per-source pricing end-to-end.
+
+---
+
+## 2026-10-24 — Admin panel UI simplified for non-technical users
+
+**Request:** the admin form was too hard to fill; make it easy for a normal user.
+**Changes (front-end only — `admin/index.html`, `admin/app.js`, `admin/config.js`, `admin/README.md`):**
+- Removed the per-field **Override checkbox**. New model: **blank = use the app default, filled = override** (blank still sends `null`). Real defaults are read live from public `app_config` and shown as greyed placeholders.
+- **Basics** (8 everyday fields) always visible; the other ~21 settings under a collapsed **Show advanced options**.
+- Friendlier inputs: colour picker + hex, ₹ price number fields, image fields with thumbnail, Features as up-to-4 rows, Login slideshow as add/remove image+caption rows.
+- **Live preview card** (brand colour, logo/name, "₹trial today, then ₹monthly/month", button) updating as you type.
+- Plain-language labels/help throughout; clearer list (colour dot + name + source + active/hidden).
+- `config.js`/`app.js` use `globalThis` instead of `window` (lint-clean).
+**Why:** the override/inherit vocabulary and 29 flat fields were the main friction. Dropped the rare "empty = hide a section" capability (blank now always = default); advanced edits still possible via Table Editor. **No backend change** — `source_config.ts` allowlist/validation unchanged.
+**Verified:** `deno lint admin/*.js` clean (no syntax errors). Not run in a browser here; logic traced by hand. Flutter suite unaffected (no Dart touched).
+**Deploy:** re-publish the `admin/` folder to Netlify (drag-drop or push if Git-connected). The panel is currently **locked** (`admin_panel_secret` blank from the E2E cleanup) — owner sets it in the Table Editor to use the panel.
+**Docs updated:** `admin/README.md`, `docs/ai/TASK_LOG.md`.
+**Follow-ups:** optional browser visual check; Cashfree sandbox test still owed before relying on per-source pricing.
+
+---
+
+## 2026-10-24 — admin-source-config deployed + full E2E against the live backend
+
+**Request:** deploy the admin function and do full end-to-end testing of per-source identity + pricing.
+**Changes:** no code. Deployed `admin-source-config` (`supabase functions deploy`, `verify_jwt=false` from config.toml). Set a temporary `admin_panel_secret` to run the tests, then **reset it to blank** (panel locked) so no AI-generated credential is left live — owner sets their own in the Table Editor.
+**E2E verified against the live project (all pass):**
+- *Read/overlay:* anon REST read of an active source returns full identity + pricing; service-role read (the exact `applySourcePricing` query) returns the same amounts → paywall display == Cashfree charge; inactive row → anon sees 0 (falls back to global); anon INSERT → 401.
+- *Device pipeline:* the actual live row → `mergeSourceRow` → `RemoteConfig` = E2E Brand, cyan theme, 2 slides, plan_e2e, ₹7/₹499, AutoPay filled (temp test, deleted).
+- *Payment fn:* deployed; unauthenticated POST → 401 (auth guard/verify_jwt intact).
+- *Admin fn (over HTTP):* no/wrong secret → 401; correct secret → list; CORS preflight returns `x-admin-secret` in allow-headers; upsert writes identity+pricing and an injected `cashfree_secret_key`/`admin_panel_secret`/`is_public` were dropped (the real `admin_panel_secret` row stayed intact); validation 400s for bad colour / non-https / zero amount / bad source; delete → 200. Blank secret → 401 (safe lock).
+- *Suites:* Flutter 149/149, Deno `source_config.test.ts` 11/11, `deno check` clean on all functions.
+**Cleanup:** all `zz_*` test rows deleted; `webview_sources` back to `facebook`/`filmyface`; secret blanked; scratchpad secret file removed.
+**Not tested (environment limits):** the real mobile app on a device, and a real/sandbox **Cashfree charge** (Cashfree keys in `app_config` still empty).
+**Docs updated:** `docs/09-deep-link-onboarding.md`, `docs/ai/AGENT_CONTEXT.md`, `docs/ai/TASK_LOG.md`.
+**Follow-ups:** owner sets `admin_panel_secret` to use the panel; a Cashfree **sandbox** end-to-end test with a per-source amount before relying on per-source pricing in production.
+
+---
+
+## 2026-10-24 — Phase B pushed + deployed to the live project
+
+**Request:** push and deploy Phase B.
+**Changes:** no code. Pushed migration `20261024130000_source_pricing.sql` (`supabase db push`) and deployed `create-cashfree-subscription` (`supabase functions deploy create-cashfree-subscription`, which re-uploaded the shared `app_config.ts` with `applySourcePricing`). `admin-source-config` deliberately NOT deployed this round; `admin_panel_secret` still blank.
+**Verified:** `deno check` clean on the function before deploy; `migration list` shows `20261024130000` local==remote; `webview_sources` now 31 columns with the 4 pricing columns nullable; unauthenticated POST to the deployed function returns 401 `UNAUTHORIZED_NO_AUTH_HEADER` (auth guard intact, verify_jwt still on, no anonymous invocation).
+**Behaviour now:** no `webview_sources` row has a pricing column set, so every install still gets the **global** price; per-source pricing takes effect only once a row's amounts are filled.
+**Not verified:** no real or sandbox Cashfree charge exercised in this environment.
+**Docs updated:** `docs/09-deep-link-onboarding.md`, `docs/ai/AGENT_CONTEXT.md`, `docs/ai/TASK_LOG.md`.
+**Follow-ups:** a Cashfree **sandbox** end-to-end test with a per-source amount before relying on it; deploy `admin-source-config` + set `admin_panel_secret` when the panel is wanted; optionally fix the pre-existing `verify-cashfree-subscription` type error.
+
+---
+
+## 2026-10-24 — Per-source app identity, Phase B (plan & prices)
+
+**Request:** move to Phase B — per-source plan and prices, on top of Phase A's visual identity.
+**Changes:**
+- `supabase/migrations/20261024130000_source_pricing.sql` — adds `plan_name`, `cashfree_plan_id`, `cashfree_trial_amount`, `cashfree_recurring_amount` (text, nullable) to `webview_sources`.
+- `supabase/functions/_shared/source_config.ts` — allowlists the 4 pricing columns; new `amount` kind (positive number, stored as text; empty = inherit, never ₹0).
+- `supabase/functions/_shared/app_config.ts` — `SOURCE_PRICING_KEYS`, `applySourcePricing(client, map, installSource)` (best-effort overlay of the 4 keys from the active source row), and `loadAppConfig(client, installSource?)`.
+- `supabase/functions/create-cashfree-subscription/index.ts` — reads `install_source` from the request body (selector only, never an amount) and passes it to `loadAppConfig`; logs the source.
+- `lib/services/evos_backend.dart` — `createSubscription(String? installSource)` on the interface and all impls; the Supabase one sends `install_source` (lowercased, non-unknown) in the function body.
+- `lib/services/payment_gateway.dart` — `CashfreePaymentGateway(installSource:)`, normalised and forwarded to `createSubscription`.
+- `lib/providers.dart` — passes `onboardingStore.installSource` into the gateway.
+- `admin/` — "Plan & prices" field group; editor note updated to warn these override real money.
+- Tests: `test/payment_source_test.dart` (+2, gateway forwards the normalised/null source); `source_config.test.ts` (+2, amount validation + pricing allowlist); `test/support/harness.dart` signature update.
+**Why:** amounts are read server-side from the table, never from the client, so a spoofed source can only pick another real partner's price (same risk profile as `webview_url`). The paywall display and the Cashfree charge both read the same source row, so they can't drift. Best-effort server overlay means any lookup error charges the known global price rather than failing the payment; partial deploys (function vs. migration) are safe for the same reason.
+**Verified:** `flutter analyze` clean; `flutter test` 149/149 pass. **QA audit (2026-10-24):** Deno is actually installed (`/opt/homebrew/bin/deno`), so `deno test --allow-net source_config.test.ts` → 11/11 pass, and `deno check` was run on every touched function. The audit found and fixed two issues: (1) a TS type error in `applySourcePricing` (`maybeSingle()` result cast — `create-cashfree-subscription` and `cashfree-webhook` now `deno check` clean); (2) a blank per-source amount was being stored as `""`, which reads as the global price server-side but as the app's default on the paywall — now coerced to `null` (inherit) so display and charge can't disagree. **Not verified:** migration NOT pushed, function NOT deployed (live payment path — owner's call); no sandbox/real charge exercised. **Pre-existing (not mine, not fixed):** `verify-cashfree-subscription/index.ts:151` has a `deno check` type error (`isAuthorizationSuccess(authorizationStatus)` with a nullable arg) — latent, predates Phase B.
+**Docs updated:** `docs/09-deep-link-onboarding.md`, `docs/ai/AGENT_CONTEXT.md`, `docs/ai/TASK_LOG.md`.
+**Follow-ups:** push `20261024130000`, deploy `create-cashfree-subscription` (and `admin-source-config` + set `admin_panel_secret` for the panel), then a Cashfree **sandbox** test with a per-source amount before production.
+
+---
+
+## 2026-10-24 — Phase A migration pushed to the live project
+
+**Request:** deploy the DB changes (before moving to Phase B).
+**Changes:** none to code. Pushed migration `20261024120000_webview_source_identity.sql` to the live Supabase project `sqvlgiqypqvjykczuhgz` with `supabase db push` (CLI at `~/.local/bin/supabase`, linked).
+**Verified (read-only `supabase db query --linked`):** `migration list` shows `20261024120000` local==remote; `webview_sources` now has 27 columns with `webview_url` nullable; `admin_panel_secret` exists, `is_public=false`, value blank; existing rows `facebook`/`filmyface` → instagram still active; the only policy is `webview_sources_active_read` (SELECT, anon/authenticated) — no write policy.
+**Not done (still blocks the panel):** `admin-source-config` edge function NOT deployed; `admin_panel_secret` NOT set (blank = panel locked, which is the safe default). Deno not installed, so the TS tests did not run.
+**Docs updated:** `docs/09-deep-link-onboarding.md`, `docs/ai/AGENT_CONTEXT.md`, `docs/ai/TASK_LOG.md`.
+**Follow-ups:** deploy the function + set the secret when the panel is wanted; then Phase B (per-source prices/plan).
+
+---
+
+## 2026-10-24 — Per-source app identity, Phase A (visual identity + admin panel)
+
+**Request:** build an admin panel to manage `webview_sources`, and make that table hold the whole app identity per install source (name, logo, colour, paywall fields, login slides, prices, plan) so the app fetches its identity by `install_source`, not just the web page URL.
+**Decisions (owner):** typed columns (not JSONB); Phase A = visual identity only, prices/plan deferred to Phase B; admin auth = a private `app_config.admin_panel_secret` row checked by an edge function; write everything locally, push/deploy nothing.
+**Changes:**
+- `supabase/migrations/20261024120000_webview_source_identity.sql` — adds the visual-identity columns to `webview_sources` (column names = `app_config` keys; NULL inherits, non-null overrides, empty hides) and the private `admin_panel_secret` row. Prices/plan deliberately omitted (Phase B).
+- `lib/services/evos_backend.dart` — `_applySourceWebUrl` → `_applySourceOverrides`; new pure `mergeSourceRow` overlays every non-meta, non-null column onto the config map generically. `fetchConfig` doc updated.
+- `supabase/functions/_shared/source_config.ts` — the write allowlist + validation (`SOURCE_COLUMNS`, `coerceColumn`, `buildSourceRow`, `normalizeSource`). Secrets are not columns, so cannot be written.
+- `supabase/functions/admin-source-config/index.ts` — service-role edge function (list/upsert/delete) behind the `x-admin-secret` header vs. `admin_panel_secret` (blank = locked); CORS for the browser panel.
+- `supabase/config.toml` — `[functions.admin-source-config] verify_jwt = false` (browser sends the publishable key, not a JWT, and the function does its own secret auth).
+- `admin/` — standalone static panel (`index.html`, `app.js`, `config.js`, `README.md`); typed secret only (no apikey/Authorization, matching `verify_jwt = false` and the CORS allow-list), all writes through the edge function.
+**QA pass (2026-10-24, before any deploy) found and fixed three issues:** (1) migration now drops `NOT NULL` on `webview_url` — an un-overridden URL is `null` (inherit) and would otherwise fail the upsert; (2) added the `verify_jwt = false` entry above, without which the gateway would 401 every browser call; (3) removed `apikey`/`Authorization` from the panel's fetch so the CORS preflight matches `Access-Control-Allow-Headers`.
+- Tests: `test/onboarding_logic_test.dart` (+4, `mergeSourceRow` inherit/override/empty/meta); `test/support/harness.dart` fake gains `overridesBySource`; `supabase/functions/_shared/source_config.test.ts` (Deno, unrun here).
+**Why:** typed columns give the admin form named fields + schema-enforced safety and keep the app's read path a flat `Map<String,String>` into `RemoteConfig.fromRows` unchanged. The NULL/empty distinction gives a clean inherit-vs-hide semantic. Writes go through a service-role function so the table keeps no anon/authenticated write policy (rules #17a).
+**Verified:** `flutter analyze` clean; `flutter test` 147/147 pass. **Not verified:** the migration/function are NOT pushed or deployed (owner's call); Deno is not installed, so the TS tests did not run; nothing exercised on a phone or against the live backend.
+**Docs updated:** `docs/09-deep-link-onboarding.md`, `docs/ai/AGENT_CONTEXT.md`, `docs/ai/TASK_LOG.md`, `admin/README.md`.
+**Follow-ups:** Phase B — per-source prices/plan: add `cashfree_*_amount`/`cashfree_plan_id`/`plan_name` columns, make `create-cashfree-subscription` source-aware (thread `install_source` through `createSubscription`), extend the allowlist. Then push the migration, deploy `admin-source-config`, set `admin_panel_secret`, and run the Deno tests.
+
+---
+
 ## 2026-10-23 — Version bump to 1.0.2+3 and signed release bundle (NOT uploaded)
 
 **Request:** bump the version and build for Play; make sure everything is correct.

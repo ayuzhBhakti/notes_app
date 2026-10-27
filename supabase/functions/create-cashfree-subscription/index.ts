@@ -69,10 +69,19 @@ Deno.serve(async (req) => {
 
     logPayment(FN, "user_authenticated", { userId: user.id });
 
+    // The install source selects a per-source plan/price (Phase B). It is only
+    // a selector: the amount charged is still read from the table server-side,
+    // never from the client. A missing/unknown source uses the global price.
+    const requestBody = await req.json().catch(() => ({}));
+    const installSource = typeof requestBody?.install_source === "string"
+      ? requestBody.install_source
+      : null;
+
     const serviceClient = createServiceClient();
-    const config = await loadAppConfig(serviceClient);
+    const config = await loadAppConfig(serviceClient, installSource);
 
     logPayment(FN, "config_loaded", {
+      installSource: installSource?.trim().toLowerCase() || "(none)",
       environment: config.cashfreeEnvironment,
       trialAmount: config.cashfreeTrialAmount,
       recurringAmount: config.cashfreeRecurringAmount,
