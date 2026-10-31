@@ -3,7 +3,17 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- This page holds the admin password, so it runs only its own scripts. The
+       preview needs https images/video, the fonts, and a frame for the web page.
+       A self-hosted Supabase (not *.supabase.co) must be added to connect-src. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src https: data:; media-src https:; frame-src https:; connect-src 'self' https://*.supabase.co; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <title>Evos — Source Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <!-- Roboto is what the app's onboarding screens use (no custom font there). -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400,0..1,0&display=block" />
+  <link rel="stylesheet" href="preview/preview.css" />
   <style>
     :root {
       --bg: #f4f4f7; --card: #fff; --ink: #1d1d1f; --muted: #70707a;
@@ -21,7 +31,16 @@
     }
     header h1 { font-size: 17px; margin: 0; font-weight: 600; }
     header button { background: rgba(255,255,255,.18); color: #fff; border: 0; }
+    header button:hover { background: rgba(255,255,255,.28); }
+    header .actions { display: flex; gap: 8px; align-items: center; }
+    /* While editing, the header stays put and carries Save, so the phone and
+       the save button are both always in view. */
+    body.editing header { position: sticky; top: 0; z-index: 30; }
+    header #saveTop { background: #fff; color: var(--brand); }
+    header #saveTop:hover { background: #f3edfd; }
     main { max-width: 1040px; margin: 0 auto; padding: 20px 16px 80px; }
+    body.editing main { max-width: 1480px; }
+    body:not(.editing) #saveTop { display: none; }
 
     .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; margin-bottom: 16px; }
     .card h2 { font-size: 13px; margin: 0 0 4px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
@@ -33,15 +52,25 @@
       font: inherit; background: #fff; color: var(--ink);
     }
     input:focus, textarea:focus, select:focus { outline: 2px solid var(--focus); outline-offset: -1px; border-color: var(--focus); }
-    input::placeholder { color: #b6b6c0; }
+    input::placeholder, textarea::placeholder { color: #b6b6c0; }
     textarea { min-height: 64px; resize: vertical; }
 
-    .field { margin-bottom: 18px; }
+    .field { margin-bottom: 18px; border-radius: 12px; }
     .field .help { color: var(--muted); font-size: 12.5px; margin-top: 5px; }
+    /* The field being edited; the phone outlines the same part in orange. */
+    .field:focus-within > .label-row label { color: var(--brand); }
+    .label-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .label-row label, .label-row .label { margin-bottom: 5px; }
+    .label-row .label { display: block; font-weight: 600; font-size: 14px; }
+    .field:focus-within > .label-row .label { color: var(--brand); }
+    .tag {
+      font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 99px;
+      background: #f0f0f3; color: #8a8a94; white-space: nowrap;
+    }
+    .tag.custom { background: #ede5fb; color: var(--brand); }
 
     /* two-column grid on wide screens */
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 20px; }
-    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } .layout { grid-template-columns: 1fr !important; } }
 
     /* price field */
     .money { position: relative; }
@@ -50,24 +79,49 @@
 
     /* colour field */
     .colour { display: flex; align-items: center; gap: 10px; }
-    .colour input[type=color] { width: 44px; height: 42px; padding: 0; border: 1px solid var(--line); border-radius: 10px; background: none; cursor: pointer; }
-    .colour input[type=text] { flex: 1; }
+    .colour input[type=color] { width: 44px; height: 42px; padding: 0; border: 1px solid var(--line); border-radius: 10px; background: none; cursor: pointer; flex: none; }
+    .colour input[type=text] { flex: 1; min-width: 0; }
     .colour .reset { white-space: nowrap; padding: 8px 10px; font-size: 13px; }
 
     /* image field */
     .imgfield { display: flex; gap: 12px; align-items: flex-start; }
-    .imgfield input { flex: 1; }
-    .thumb { width: 52px; height: 52px; border-radius: 10px; border: 1px dashed var(--line); object-fit: cover; background: #fafafb; flex: none; }
-    .thumb.empty { display: inline-block; }
+    .imgfield input { flex: 1; min-width: 0; }
+    .thumb { width: 44px; height: 44px; border-radius: 10px; border: 1px dashed var(--line); object-fit: cover; background: #fafafb; flex: none; }
 
     /* repeatable rows (features / slides) */
-    .rows .row2 { display: flex; gap: 8px; margin-bottom: 8px; }
-    .rows .row2 input { flex: 1; }
-    .rows .row2 .rm { flex: none; padding: 8px 12px; color: var(--danger); border-color: var(--line); }
+    .field .row2 { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
+    .row2 input { flex: 1; min-width: 0; }
+    .row2 .rm { flex: none; padding: 8px 12px; color: var(--danger); border-color: var(--line); }
     .addrow { font-size: 13px; padding: 7px 12px; }
 
-    button { padding: 10px 16px; border-radius: 10px; border: 1px solid var(--line); background: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+    /* icon picker */
+    .ip { position: relative; flex: none; }
+    .ip-face {
+      width: 44px; height: 44px; padding: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      background: #f1ebfc; color: var(--brand); border: 1px solid #e0d4f7;
+    }
+    .ip-face.is-default { background: #f4f4f7; color: #8a8a94; border-style: dashed; border-color: #cfcfd8; }
+    .ip-face .ms { font-size: 22px; }
+    .ip-face img { width: 22px; height: 22px; object-fit: contain; }
+    .ip-pop {
+      position: absolute; z-index: 20; top: 50px; left: 0; width: 340px; max-width: calc(100vw - 48px); background: #fff;
+      border: 1px solid var(--line); border-radius: 14px; padding: 10px; box-shadow: 0 16px 40px rgba(20, 10, 40, .18);
+    }
+    .ip-pop[hidden] { display: none; }
+    .ip-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; max-height: 236px; overflow: auto; }
+    .ip-opt {
+      padding: 6px 2px 4px; border: 1px solid transparent; border-radius: 10px; background: none;
+      display: flex; flex-direction: column; align-items: center; gap: 2px; font-weight: 500;
+    }
+    .ip-opt:hover { background: #f4effd; border-color: #e0d4f7; }
+    .ip-opt .ms { font-size: 22px; color: var(--brand); }
+    .ip-opt small { font-size: 9.5px; color: var(--muted); line-height: 1.1; text-align: center; }
+    .ip-urlrow { display: flex; gap: 6px; margin-top: 8px; }
+    .ip-urlrow input { padding: 8px 10px; font-size: 13px; }
+
+    button { padding: 10px 16px; border-radius: 10px; border: 1px solid var(--line); background: #fff; font: inherit; font-weight: 600; cursor: pointer; color: var(--ink); }
     button:hover { background: #f6f6f8; }
+    button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
     button.primary { background: var(--brand); color: #fff; border-color: var(--brand); }
     button.primary:hover { filter: brightness(1.05); background: var(--brand); }
     button.danger { color: var(--danger); border-color: var(--danger); }
@@ -82,7 +136,7 @@
 
     /* source list */
     .source-item { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; margin-bottom: 8px; }
-    .dot { width: 18px; height: 18px; border-radius: 50%; border: 1px solid rgba(0,0,0,.1); flex: none; }
+    #sources .dot { width: 18px; height: 18px; border-radius: 50%; border: 1px solid rgba(0,0,0,.1); flex: none; }
     .source-item .name { font-weight: 700; }
     .source-item .src { color: var(--muted); font-size: 13px; }
     .source-item .spacer { flex: 1; }
@@ -92,35 +146,51 @@
     .msg { padding: 11px 14px; border-radius: 10px; margin-bottom: 14px; display: none; font-weight: 500; }
     .msg.err { background: #fdecea; color: var(--danger); display: block; }
     .msg.ok { background: #e5f6ea; color: var(--ok); display: block; }
-    .hidden { display: none; }
+    .hidden { display: none !important; }
     .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 
-    /* edit layout with sticky preview */
-    .layout { display: grid; grid-template-columns: 1fr 300px; gap: 20px; align-items: start; }
-    .preview-wrap { position: sticky; top: 16px; }
+    /* editor: form on the left, sticky phone preview on the right */
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 470px; gap: 24px; align-items: start; }
+    .layout:has(.pv.is-all) { grid-template-columns: minmax(360px, 480px) minmax(0, 1fr); }
+    .layout:has(.pv.is-all) .grid { grid-template-columns: 1fr; }
+    .preview-wrap {
+      position: sticky; top: 86px; height: calc(100vh - 102px); background: var(--card);
+      border: 1px solid var(--line); border-radius: 18px; padding: 14px 14px 10px; display: flex; flex-direction: column;
+    }
+    .preview-wrap > .pv { flex: 1; min-height: 0; }
+    #previewClose, #previewFab { display: none; }
 
-    /* preview card */
-    .preview { border-radius: 18px; overflow: hidden; border: 1px solid var(--line); background: #fff; }
-    .preview .pv-top { padding: 18px; color: #fff; text-align: center; }
-    .preview .pv-logo { width: 46px; height: 46px; border-radius: 12px; background: rgba(255,255,255,.25); display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 20px; overflow: hidden; }
-    .preview .pv-logo img { width: 100%; height: 100%; object-fit: cover; }
-    .preview .pv-name { font-weight: 700; margin-top: 8px; font-size: 16px; }
-    .preview .pv-body { padding: 16px 18px 20px; text-align: center; }
-    .preview .pv-title { font-weight: 700; font-size: 17px; }
-    .preview .pv-sub { color: var(--muted); font-size: 13px; margin-top: 4px; min-height: 16px; }
-    .preview .pv-price { margin: 14px 0; font-size: 14px; }
-    .preview .pv-price b { font-size: 20px; }
-    .preview .pv-cta { display: block; width: 100%; padding: 12px; border-radius: 10px; color: #fff; font-weight: 700; border: 0; }
-    .preview-note { color: var(--muted); font-size: 12px; text-align: center; margin-top: 8px; }
+    @media (max-width: 1100px) {
+      .grid { grid-template-columns: 1fr; }
+      .layout { grid-template-columns: minmax(0, 1fr) 400px; }
+    }
+    @media (max-width: 860px) {
+      .layout, .layout:has(.pv.is-all) { grid-template-columns: 1fr; }
+      .preview-wrap { display: none; }
+      body.preview-open .preview-wrap {
+        display: flex; position: fixed; inset: 0; z-index: 50; height: auto; border-radius: 0; border: 0; padding: 12px 16px;
+      }
+      body.preview-open { overflow: hidden; }
+      body.preview-open #previewClose { display: inline-flex; align-self: flex-end; margin-bottom: 6px; }
+      body.editing #previewFab {
+        display: inline-flex; align-items: center; gap: 6px; position: fixed; right: 16px; bottom: 16px; z-index: 40;
+        background: var(--brand); color: #fff; border: 0; border-radius: 99px; padding: 12px 18px;
+        box-shadow: 0 8px 24px rgba(109, 40, 217, .4);
+      }
+      body.preview-open #previewFab { display: none; }
+    }
   </style>
 </head>
 <body>
   <header>
     <h1>Evos — Source Admin</h1>
-    <button id="logout" class="hidden">Lock</button>
+    <div class="actions">
+      <button id="saveTop" class="hidden" type="button">Save</button>
+      <button id="logout" class="hidden">Lock</button>
+    </div>
   </header>
   <main>
-    <div id="msg" class="msg"></div>
+    <div id="msg" class="msg" role="status"></div>
 
     <!-- Login gate -->
     <section id="login" class="card">
@@ -153,15 +223,16 @@
             <button class="danger" id="delete">Delete</button>
           </div>
         </div>
-        <div class="preview-wrap">
-          <div class="preview" id="preview"></div>
-          <div class="preview-note">Live preview — blank fields use the app default.</div>
-        </div>
+        <aside class="preview-wrap" aria-label="Phone preview">
+          <button id="previewClose" type="button">Close preview</button>
+          <div class="pv" id="preview"></div>
+        </aside>
       </div>
+      <button id="previewFab" type="button"><span class="ms">smartphone</span> Preview</button>
     </section>
   </main>
 
   <script src="config.js"></script>
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>

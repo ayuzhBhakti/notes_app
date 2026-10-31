@@ -9,6 +9,7 @@ import 'models/install_source.dart';
 import 'providers.dart';
 import 'screens/app_gate.dart';
 import 'services/analytics.dart';
+import 'services/attribution_service.dart';
 import 'services/deep_link_service.dart';
 import 'services/install_referrer_service.dart';
 import 'services/onboarding_store.dart';
@@ -50,20 +51,23 @@ Future<void> main() async {
       if (answer != null) {
         final int attempt = onboardingStore.installReferrerAttempts + 1;
         if (isReferrerFinal(answer.referrer, attempt)) {
+          // Once per install. A Meta ad click is decoded later, after the
+          // first frame, by AttributionService.
+          await recordInstallAttribution(
+            store: onboardingStore,
+            analytics: analytics,
+            answer: answer,
+            attempt: attempt,
+          );
           await onboardingStore.markInstallReferrerChecked();
         } else {
           await onboardingStore.saveInstallReferrerAttempts(attempt);
         }
         final InstallSource source = InstallSource.parse(answer.referrer);
-        analytics.installAttributed(
-          source,
-          referrer: answer.referrer,
-          clickRecorded: answer.clickSeconds > 0,
-          attempt: attempt,
-        );
         // Remembered for the web-page step, which runs many launches later and
         // no longer has the referrer. Anything but the unattributed default is
         // worth keeping; an unmatched source just falls back to the global URL.
+        // The raw utm_source on purpose: it is the webview_sources key.
         if (source.source != InstallSource.sourceUnknown) {
           await onboardingStore.saveInstallSource(source.source.toLowerCase());
         }

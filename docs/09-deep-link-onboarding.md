@@ -58,7 +58,7 @@ Chosen by the implementer, not confirmed by the product owner:
 - **A separate Supabase project from CashAlert,** which is what was then supplied (`sqvlgiqypqvjykczuhgz`). Sharing one would make a CashAlert subscriber an Evos subscriber, because both key the subscription on the phone account.
 - **The paywall invents nothing.** CashAlert's shows a star rating, a subscriber count and rotating "… just started a trial" lines that are fixed text in the app. Here those parts appear only if the backend sends them, and are blank by default. The heading pill shows the trial price rather than the word FREE, because the trial is charged.
 - **Default prices.** ₹3 for 24 hours, then ₹299 a month, until the backend says otherwise.
-- **The web page screen has an app bar** with the logo and name, a reload button and a menu holding "Log out", so a subscriber can always sign out.
+- **The web page screen is full screen, with no app bar** (owner's decision, 2026-10-31, replacing the app bar with logo, name, reload and a "Log out" menu). A subscriber therefore has no Log out: switching numbers means clearing the app's data. A failed load still offers "Try again".
 
 ## Flow
 
@@ -81,7 +81,7 @@ flowchart TD
 
 - **The server decides who has paid.** The stage saved on the device is only what to show first. At every start, whenever the paywall or the web page comes back to the front, and on "Check again", the app asks the server and moves between paywall and web page to match. A subscriber on a new phone goes from the code screen straight to the web page. The review account is never asked about: it sits on the `notes` stage and skips the check.
 - **Offline, nothing moves.** If the server cannot be reached the device stays where it last knew it was, so a subscriber is not sent back to the paywall for having no signal.
-- **Log out** is on the web page screen only (the paywall has none, by decision of 2026-10-14) and returns to the mobile-number screen.
+- **Log out** is only on the review account's Profile screen. Subscribers have none since 2026-10-31 (the web page lost its app bar), and the paywall has none by decision of 2026-10-14.
 - **Links change nothing.** `notes://onboarding` (debug builds), `https://notes-f36b3.web.app/onboarding` and a Play Store referrer with `flow=onboarding` are each reported as `Deep Link Opened` and otherwise ignored.
 - **An older build's saved stage** is mapped on the first launch of this one: `maintenance` becomes the web page; `inactive` (the notes app), `details` and `member` become the mobile-number screen.
 
@@ -95,7 +95,7 @@ Designs: <https://claude.ai/artifact/R8sDE5Buj8BJo7E14StMTW> (the paywall there 
 | Code | [otp_screen.dart](../lib/screens/onboarding/otp_screen.dart) | Six boxes over one hidden field, so paste and the keyboard's SMS suggestion work. The sixth digit verifies by itself; "Verify" is there too. A wrong code empties the boxes. "Resend code" appears after 30 seconds. Back, in the app bar or the system's, returns to the number. |
 | Paywall | [paywall_screen.dart](../lib/screens/onboarding/paywall_screen.dart) | CashAlert's layout without its "Log out": logo and name on top; heading with a pill; rating; preview video (or picture); up to four feature badges; the monthly price struck through beside the trial price; a rotating line of social proof; a bottom bar with the UPI app on the left and "Try Now" on the right. Each part with nothing to show is left out. Every text, icon, price and the accent colour can come from the `paywall_*` rows below; a blank text uses the app's own. While a payment runs, a full-screen **processing screen** covers the paywall (a spinner, the stage, and "keep the app open"); the system Back button leaves it and stops the wait. |
 | Notes (review number) | [notes_list_screen.dart](../lib/screens/notes_list_screen.dart), [note_editor_screen.dart](../lib/screens/note_editor_screen.dart), [profile_screen.dart](../lib/screens/profile_screen.dart) | The list (pinned "Notes" title, a profile button, a "New note" button), the editor (title and body, save, delete, swipe-to-delete with Undo) and a plain Profile with "Log out". Backed by `LocalNotesStore`, device-local, no Firebase. Shown with the app's own violet theme, outside `BrandShell`. |
-| Web page | [web_screen.dart](../lib/screens/onboarding/web_screen.dart) | An app bar (logo and name, "Reload", a ⋮ menu with "Log out") over a WebView of `webview_url`. JavaScript on; DOM storage, multiple windows, pinch zoom, and fullscreen video on (the plugin's defaults plus `enableZoom`); media may start without a tap; third-party cookies accepted; text size follows the phone's font-size setting (`setTextZoom`); WebView debugging in debug builds. A thin progress bar while a page loads. A failed main page shows "This page couldn't be loaded." and "Try again"; a failed image or script does not. Back goes back in the page's history, and closes the app when there is none. Links that are not http(s), such as `tel:`, `mailto:`, `upi:` or `whatsapp:`, open in the app that handles them (`url_launcher`). Not supported: file upload, and the page's requests for camera, microphone or location, which are denied. Blank or non-https `webview_url`: "You're all set", a line saying the page is not available yet, and "Check again". |
+| Web page | [web_screen.dart](../lib/screens/onboarding/web_screen.dart) | Full screen, no app bar (since 2026-10-31): a WebView of `webview_url`, inside a `SafeArea`. JavaScript on; DOM storage, multiple windows, pinch zoom, and fullscreen video on (the plugin's defaults plus `enableZoom`); media may start without a tap; third-party cookies accepted; text size follows the phone's font-size setting (`setTextZoom`); WebView debugging in debug builds. A thin progress bar while a page loads. A failed main page shows "This page couldn't be loaded." and "Try again"; a failed image or script does not. Back goes back in the page's history, and closes the app when there is none. Links that are not http(s), such as `tel:`, `mailto:`, `upi:` or `whatsapp:`, open in the app that handles them (`url_launcher`). Not supported: file upload, and the page's requests for camera, microphone or location, which are denied. Blank or non-https `webview_url`: "You're all set", a line saying the page is not available yet, and "Check again". |
 
 One sentence on the paywall is always shown: the statement that money will be taken every month. The backend words it in `paywall_autopay_text`, where `{trial}` and `{recurring}` become the two prices from the amount rows, so the words cannot drift from what is charged. Blank uses the app's own: "₹3 today for the first 24 hours, then ₹299 every month by UPI AutoPay. Cancel any time in your UPI app." (owner's decision, 2026-10-19; before that it could not come from the backend). Whoever edits that row is responsible for it still saying that money is taken every month.
 
@@ -117,12 +117,14 @@ Everything is in [supabase/](../supabase/), adapted from CashAlert's. It is depl
 | Per-source web page | [migrations/20261022130000_webview_sources.sql](../supabase/migrations/20261022130000_webview_sources.sql) | `webview_sources` (`source`, `webview_url`, `is_active`), public-read like `app_config`. **Pushed 2026-10-22**. The app overrides `webview_url` with the active row matching its install source |
 | Per-source identity (Phase A) | [migrations/20261024120000_webview_source_identity.sql](../supabase/migrations/20261024120000_webview_source_identity.sql) | Adds the visual-identity columns to `webview_sources` (name, logo, colour, every `paywall_*` field, login carousel; drops `NOT NULL` on `webview_url`) and the private `admin_panel_secret` row. **Pushed 2026-10-24** (27 columns live, `admin_panel_secret` blank). See "Per-source app identity" below |
 | Per-source pricing (Phase B) | [migrations/20261024130000_source_pricing.sql](../supabase/migrations/20261024130000_source_pricing.sql) | Adds `plan_name`, `cashfree_plan_id`, `cashfree_trial_amount`, `cashfree_recurring_amount` (text, nullable) to `webview_sources`. **Pushed 2026-10-24** (31 columns live). Read server-side by `create-cashfree-subscription` |
+| User attribution | [migrations/20261031120000_user_attribution.sql](../supabase/migrations/20261031120000_user_attribution.sql) | Adds the latest-ad columns to `profiles` (`install_source`, `utm_*`, `campaign_id`, `adset_id`, `ad_id`, `gclid`, `attributed_at`), the `SECURITY DEFINER` RPC `save_user_attribution` (signed-in user, own row only; organic/unknown never replaces a known ad), and the private rows `meta_install_referrer_key` and `mixpanel_token`. **Pushed 2026-10-31**; both rows filled. See "Ad attribution" below |
+| `meta-install-referrer` | [functions/meta-install-referrer/](../supabase/functions/meta-install-referrer/index.ts) | Decrypts the Meta ad in a Play install referrer (AES-256-GCM, [_shared/meta_referrer.ts](../supabase/functions/_shared/meta_referrer.ts)). Called before sign-in, so `verify_jwt = false`. Stores nothing. **Deployed 2026-10-31 and checked live** with a sample encrypted with the configured key (row `meta_install_referrer_key`); not yet with a real Meta referrer |
 | `admin-source-config` | [functions/admin-source-config/](../supabase/functions/admin-source-config/index.ts) | Service-role writer for `webview_sources`, behind the `x-admin-secret` header; backs the `admin/` panel. `verify_jwt = false` in `config.toml`. **DEPLOYED 2026-10-24 and E2E-tested.** `admin_panel_secret` is blank, so the panel is locked until the owner sets it in the Table Editor |
 | `create-cashfree-subscription` (source-aware since Phase B) | [functions/create-cashfree-subscription/](../supabase/functions/create-cashfree-subscription/index.ts) | Reads `install_source` from the request body and overlays the source's plan/price before charging (`applySourcePricing`). **Phase B edit DEPLOYED 2026-10-24** |
 | `sms-hook` | [functions/sms-hook/](../supabase/functions/sms-hook/index.ts) | Supabase Auth makes and checks the code; this delivers it through Fast2SMS |
 | `create-cashfree-subscription` | [functions/create-cashfree-subscription/](../supabase/functions/create-cashfree-subscription/index.ts) | Creates the mandate with the Cashfree id and secret and returns a session id |
-| `verify-cashfree-subscription` | [functions/verify-cashfree-subscription/](../supabase/functions/verify-cashfree-subscription/index.ts) | Asks Cashfree whether the mandate went through and records the payment |
-| `cashfree-webhook` | [functions/cashfree-webhook/](../supabase/functions/cashfree-webhook/index.ts) | Records each monthly debit, failure, cancellation and expiry. This is what keeps access going after the first day |
+| `verify-cashfree-subscription` | [functions/verify-cashfree-subscription/](../supabase/functions/verify-cashfree-subscription/index.ts) | Asks Cashfree whether the mandate went through and records the payment. Since 2026-10-31 (deployed, v2) also sends `Payment Succeeded` to Mixpanel for a payment it records first |
+| `cashfree-webhook` | [functions/cashfree-webhook/](../supabase/functions/cashfree-webhook/index.ts) | Records each monthly debit, failure, cancellation and expiry. This is what keeps access going after the first day. Since 2026-10-31 (deployed, v3) also sends `Payment Succeeded`, `Payment Failed`, `Subscription Cancelled` and `Subscription Expired` to Mixpanel, with the user's ad ([_shared/mixpanel.ts](../supabase/functions/_shared/mixpanel.ts)) |
 
 Left out of the CashAlert original: push notifications, server-side Mixpanel events, the failed-debit retry job, the status-event log and the daily report.
 
@@ -145,7 +147,7 @@ Key and value rows, edited in the Supabase Table Editor. A third column, `is_pub
 | `paywall_subtitle` | yes | A line under the heading. Blank hides it. `20261019120000` | blank |
 | `paywall_features` | yes | Up to four badges, separated by `\|` | `Full access\|Cancel anytime\|Secure UPI AutoPay` |
 | `paywall_feature_icons` | yes | One icon per badge, separated by `\|`, paired by position (see Icons above). `20261019120000` | ticks |
-| `paywall_show_strike_price` | yes | `true` or `false`: the monthly price struck through beside the trial price. `20261019120000` | `true` |
+| `paywall_show_strike_price` | yes | `true` or `false`: the monthly price struck through beside the trial price. Off unless the row says `true` (app default `false` since 2026-10-31, owner's decision). **The live row is still `true`** until someone sets it to `false`. `20261019120000` | `false` |
 | `paywall_accent_color` | yes | `#RRGGBB` for the pill, the large price and the icons; text on the pill turns black or white to stay readable. The button follows `theme_color`. `20261019120000` | blank (theme) |
 | `paywall_autopay_text` | yes | The sentence that money is taken every month, with `{trial}` and `{recurring}`. Blank uses the app's own. `20261019120000` | blank |
 | `paywall_social_proof_icon` | yes | Icon of the social-proof strip. `20261019120000` | blank (sparkle) |
@@ -162,6 +164,8 @@ Key and value rows, edited in the Supabase Table Editor. A third column, `is_pub
 | `customer_email_domain` | **no** | A domain the business owns. Cashfree needs an email per customer and a phone sign-in has none, so one is made as `user+<phone>@<domain>` | blank |
 | `fast2sms`, `fast2sms_dlt_sender_id`, `fast2sms_dlt_te_id` | **no** | Fast2SMS API key, DLT sender id and template (message) id, read by `sms-hook`. The same three keys CashAlert's table has, to be filled with the same values | blank |
 | `send_sms_hook_secret` | **no** | The secret the dashboard shows when the Send SMS hook is saved | blank |
+| `meta_install_referrer_key` | **no** | Meta's Install Referrer Decryption Key (Meta App Dashboard → Settings → Basic → Android, 64 hex characters), read by `meta-install-referrer`. Function secret `META_INSTALL_REFERRER_KEY` is the fallback | blank |
+| `mixpanel_token` | **no** | Mixpanel project token for server events (the same project as `analytics_keys.xml`). Blank: no server events | blank |
 
 - **The Cashfree id and secret never reach the app.** They are private rows, read only by edge functions with the service role. The app receives a single-use session id. Never mark either row public.
 - The app keeps the last settings it fetched on the device, so the next start is already branded before the network answers, and still is with no network. A missing row, a blank value or a bad one (a colour that is not `#RRGGBB`, a negative price, an `http:` image) falls back to the default rather than breaking a screen. Parsing is in [remote_config.dart](../lib/models/remote_config.dart).
@@ -266,11 +270,11 @@ How it works:
 
 - **The source is remembered on the device.** `main()` parses the install referrer once (see below), and saves the source (lowercased) in `install_source_v1` (`OnboardingStore.installSource`). It is read on every later launch through `installSourceProvider`, because the paywall/web step comes many launches after the referrer was read.
 - **The lookup is one filtered read.** `SupabaseEvosBackend.fetchConfig(installSource)` fetches `app_config` as before, then, for a known active source, reads the one matching `webview_sources` row and overlays **every non-null column** onto the config map (`_applySourceOverrides` → the pure `mergeSourceRow`). The column names are the `app_config` keys, so a column added later needs no read-path change. The client never downloads the whole table.
-- **Fallback chain:** the source's active-row column → the global `app_config` value → the field's built-in default. An unattributed install (`unknown`, organic, or a phone with a work account that makes Play strip the referrer) always gets the global settings.
+- **Fallback chain:** the source's active-row column → the global `app_config` value → the field's built-in default. **Except the login slides** (`login_slide_images`, `login_slide_titles`, since 2026-10-31, owner's decision): a matched source shows only its own, and with none set it shows **no carousel**, never the global slides (`_sourceOnlyColumns` in `SupabaseEvosBackend.mergeSourceRow`, mirrored by `mergeRows` in `admin/preview/resolve.js`). Installs that match no row keep the global slides. An unattributed install (`unknown`, organic, or a phone with a work account that makes Play strip the referrer) always gets the global settings.
 - **Best-effort.** The `webview_sources` read is wrapped so a missing table/row or any error just leaves the global settings; the rest of the config is never lost.
 - **Cached like the rest of the settings.** The resolved, overlaid rows are saved in `evos_config_v1`, so the next launch is instant and offline-correct (the source does not change after install).
 
-**Writing the table — the admin panel.** The table has no anon/authenticated write policy; it is written only through the `admin-source-config` edge function (service role), gated by the `x-admin-secret` header against the private `app_config.admin_panel_secret` row (blank = locked). The function only writes the allowlisted columns in `supabase/functions/_shared/source_config.ts` — secrets are not columns of this table and can never be injected. The standalone static panel lives in `admin/` (see its README).
+**Writing the table — the admin panel.** The table has no anon/authenticated write policy; it is written only through the `admin-source-config` edge function (service role), gated by the `x-admin-secret` header against the private `app_config.admin_panel_secret` row (blank = locked). The function only writes the allowlisted columns in `supabase/functions/_shared/source_config.ts` — secrets are not columns of this table and can never be injected. The standalone static panel lives in `admin/` (see its README). Since 2026-10-31 it shows a live 360×800 phone preview of all six onboarding screens (sign-in, code, paywall, UPI sheet, processing, web page) that follows the field being edited; it reads the settings with a JS port of `RemoteConfig.fromRows` (`admin/preview/resolve.js`), so a change to `fromRows` or to an onboarding screen must be mirrored there.
 
 ### The Play Store referrer
 
@@ -282,10 +286,22 @@ A Play Store link can carry a `referrer` parameter. Play keeps it through the in
 - **Read in `main()`, before `runApp`,** with a 3-second limit.
 - **Read until settled.** An answer with any content sets `install_referrer_checked` on the device. An empty answer (seen on every Play install on 2026-10-22) is counted in `install_referrer_attempts` and asked for again on the next launch, up to 5 launches. A failed read (no Play Store, timeout) is not counted and is tried again on the next launch.
 - **Encoded or not.** `flow%3Donboarding`, a referrer handed over still encoded, is accepted too.
-- **Reported.** `Install Attributed` carries Play's raw answer and whether Play recorded a link tap, so Mixpanel shows what Play actually sent ([10-analytics.md](10-analytics.md)).
+- **Reported.** `Install Attributed` (once, when the answer is final) carries Play's raw answer and whether Play recorded a link tap, so Mixpanel shows what Play actually sent ([10-analytics.md](10-analytics.md)).
+- **Two readings of one string.** The raw `utm_source` is saved as `install_source_v1` and picks the `webview_sources` row (unchanged). The attribution model (`Attribution`, below) reads the same referrer for analytics. A Meta ad click arrives as `apps.facebook.com`, which matches no row today.
 - **Android only.** On iOS the read returns nothing, and there is no equivalent App Store mechanism.
 
 An install that did not come from a link returns Play's default, `utm_source=google-play&utm_medium=organic`.
+
+### Ad attribution
+
+Which ad brought each user, on every Mixpanel event and on their `profiles` row. Team guide: [DEEPLINK_GUIDE.md](DEEPLINK_GUIDE.md). Built 2026-10-31. **Backend deployed 2026-10-31; the app side is not released.**
+
+- **One model:** [attribution.dart](../lib/models/attribution.dart). `install_source` is `meta`, `google_ads`, `organic`, `other` or `unknown`; `utm_campaign`/`utm_term`/`utm_content` are campaign, ad set and ad; `campaign_id`/`adset_id`/`ad_id` are text. Read from the Play referrer, from a link's query (`utm_*`, `gclid`, `gbraid`, `wbraid`, `gad_campaignid`), or from a decoded Meta ad.
+- **First launch:** `main()` records the install (`recordInstallAttribution`) when Play's answer is final. A Meta ad click is only `meta` at that point.
+- **After the first frame:** [AttributionService](../lib/services/attribution_service.dart) `start()` sends the **whole** referrer of a Meta ad click to `meta-install-referrer` (a cut copy loses the nonce). No answer (offline, 5xx, or 401/403/404/408/429, which describe the deployment) is retried on later launches, up to 5; any other 4xx or a decoded ad settles it. An install made by an older version reads its referrer once after the update. Non-Meta referrers never reach the backend.
+- **Latest and first.** The latest ad (last touch) is the super properties and the profile's `utm_*`; a link with `utm_*` replaces it, an organic one never does, and a Meta ad decoded late fills in only the nameless `meta` entry it left. The first touch is set once (`first_*`, `people.setOnce`).
+- **Saved on the server** through `save_user_attribution` after sign-in (`syncToServer(newSignIn: true)`) and whenever the latest ad changes for a signed-in user. Skipped for the review account. Only a change since the last save is sent; a failure is retried next launch.
+- **Server events** read the ad from `profiles` (see [10-analytics.md](10-analytics.md#server-events)).
 
 ### Receiving the direct link
 
@@ -301,7 +317,7 @@ Two framework behaviours shape the code, and both are easy to break:
 
 ### What is stored on the device
 
-Three keys in `shared_preferences`:
+These keys in `shared_preferences` (and the referrer and attribution keys listed after the table):
 
 | Key | Holds |
 |-----|-------|
@@ -314,7 +330,7 @@ Three keys in `shared_preferences`:
 - A missing, corrupt or unrecognised stage decodes to `signIn`: signing in again is always safe.
 - The `notes` stage only ever belongs to the review account. Stages saved by older builds: `maintenance` decodes to `web`; `inactive` (the old notes app), `details` and `member` to `signIn`.
 - A stage past sign-in with no session on the device is shown as sign-in, unless it is the review account, which has no session.
-- The mobile number and the code are never stored. Clearing the app's data removes all three keys, and `install_referrer_checked` and `install_referrer_attempts`.
+- The mobile number and the code are never stored. Clearing the app's data removes all of these, and `install_referrer_checked`, `install_referrer_attempts`, `install_source_v1` and the attribution keys: `attribution_latest_v1`, `attribution_first_v1` (JSON of `Attribution`), `attribution_synced_v1` (the last one saved on the server), `attribution_install_here_v1`, `meta_referrer_settled_v1`, `meta_referrer_attempts_v1`. Native code keeps its own copy of the latest and first ad (`analytics_install_source` preferences) so a Mixpanel reset does not lose them.
 - Each step is reported to analytics, without the number or the code. The events are in [10-analytics.md](10-analytics.md#onboarding).
 
 ## Setting up the backend

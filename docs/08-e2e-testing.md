@@ -86,7 +86,7 @@ Both clear the app's data at their start and end.
 | `otp_field`, `otp_verify_button`, `otp_resend_button` | Code screen. `otp_field` is the one invisible field under the six boxes | [otp_screen.dart](../lib/screens/onboarding/otp_screen.dart) |
 | `paywall_upi_selector`, `paywall_try_now_button` | Paywall bottom bar | [paywall_screen.dart](../lib/screens/onboarding/paywall_screen.dart) |
 | `upi_app_<package>` | A row in the UPI app sheet | [paywall_screen.dart](../lib/screens/onboarding/paywall_screen.dart) |
-| `web_screen`, `web_menu_button`, `web_logout_button`, `web_check_again_button` | Web page screen: the whole screen, the ⋮ menu, Log out inside it, and "Check again" (only while there is no `webview_url`) | [web_screen.dart](../lib/screens/onboarding/web_screen.dart) |
+| `web_screen`, `web_check_again_button` | Web page screen: the whole screen, and "Check again" (only while there is no `webview_url`). `web_menu_button` and `web_logout_button` were removed with the app bar on 2026-10-31; `onboarding.yaml` asserts the menu is gone | [web_screen.dart](../lib/screens/onboarding/web_screen.dart) |
 | `notes_profile_button`, `note_title_field`, `note_body_field`, `note_save_button`, `note_delete_button` | The review account's notes screens | [notes_list_screen.dart](../lib/screens/notes_list_screen.dart), [note_editor_screen.dart](../lib/screens/note_editor_screen.dart) |
 
 `phone_field` and `otp_field` are confirmed on a device. The `web_*` and `note*` identifiers are used by the flows but not yet confirmed on a device since the 2026-10-22 rewrite.

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:evos/main.dart';
+import 'package:evos/models/attribution.dart';
 import 'package:evos/providers.dart';
 import 'package:evos/services/analytics.dart';
 import 'package:evos/services/deep_link_service.dart';
@@ -82,6 +83,12 @@ class FakeBackend implements EvosBackend {
   final List<String> codesSentTo = <String>[];
   int signOuts = 0;
 
+  MetaDecodeResult metaResult =
+      const MetaDecodeResult(MetaDecodeStatus.notMeta);
+  BackendError? attributionError;
+  final List<String> decodedReferrers = <String>[];
+  final List<Attribution> savedAttributions = <Attribution>[];
+
   // Long enough for a busy state to be seen, as a real call would be.
   static const Duration _delay = Duration(milliseconds: 50);
 
@@ -137,6 +144,18 @@ class FakeBackend implements EvosBackend {
   @override
   Future<bool> verifySubscription(String subscriptionId) =>
       throw UnimplementedError('Payments go through FakeGateway.');
+
+  @override
+  Future<MetaDecodeResult> decodeMetaReferrer(String referrer) async {
+    decodedReferrers.add(referrer);
+    return metaResult;
+  }
+
+  @override
+  Future<void> saveAttribution(Attribution attribution) async {
+    if (attributionError != null) throw BackendFailure(attributionError!);
+    savedAttributions.add(attribution);
+  }
 }
 
 /// Stands in for Cashfree. [failure] is thrown by `subscribe` when set.

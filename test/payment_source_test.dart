@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:evos/models/attribution.dart';
 import 'package:evos/services/evos_backend.dart';
 import 'package:evos/services/payment_gateway.dart';
 
@@ -44,6 +45,13 @@ class _RecordingBackend implements EvosBackend {
 
   @override
   Future<void> signOut() async {}
+
+  @override
+  Future<MetaDecodeResult> decodeMetaReferrer(String referrer) async =>
+      const MetaDecodeResult(MetaDecodeStatus.notMeta);
+
+  @override
+  Future<void> saveAttribution(Attribution attribution) async {}
 }
 
 /// A platform that opens instantly and never calls back, so the gateway

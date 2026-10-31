@@ -18,6 +18,11 @@ import {
   resolvePlanType,
 } from "../_shared/subscription.ts";
 import { logPayment, logPaymentError } from "../_shared/logger.ts";
+import {
+  paymentTypeFor,
+  previousPaymentStatus,
+  trackUserEvent,
+} from "../_shared/mixpanel.ts";
 
 const FN = "cashfree-webhook";
 
@@ -43,6 +48,22 @@ function jsonResponse(body: unknown, status = 200): Response {
 function parseAmount(value: number | string | undefined, fallback: number): number {
   const parsed = typeof value === "number" ? value : Number.parseFloat(String(value ?? ""));
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function trackStatusChange(
+  client: ReturnType<typeof createServiceClient>,
+  token: string,
+  userId: string,
+  subscriptionId: string,
+  change: { event: string; cashfreeStatus: string },
+): Promise<void> {
+  return trackUserEvent(client, token, {
+    fn: FN,
+    event: change.event,
+    userId,
+    insertId: `${subscriptionId}:${change.cashfreeStatus}`,
+    properties: { cashfree_status: change.cashfreeStatus },
+  });
 }
 
 Deno.serve(async (req) => {
@@ -96,7 +117,7 @@ Deno.serve(async (req) => {
 
     const { data: profile } = await serviceClient
       .from("profiles")
-      .select("phone, cashfree_subscription_id")
+      .select("phone, cashfree_subscription_id, subscription_status")
       .eq("id", userId)
       .maybeSingle();
     const phone: string | null = profile?.phone ?? null;
@@ -110,20 +131,44 @@ Deno.serve(async (req) => {
     const planType = resolvePlanType(payload.data?.payment_type, amount, config);
     const paymentId = resolvePaymentId(payload.data ?? {}, subscriptionId, eventType);
 
+    // Read before the payment is recorded, so it is the one before this.
+    const previousStatus = eventType.startsWith("SUBSCRIPTION_PAYMENT_")
+      ? await previousPaymentStatus(serviceClient, subscriptionId, paymentId)
+      : null;
+
     if (
       eventType === "SUBSCRIPTION_PAYMENT_SUCCESS" &&
       payload.data?.payment_status?.toUpperCase() === "SUCCESS"
     ) {
+      const recordedAmount = planType === "trial"
+        ? config.cashfreeTrialAmount
+        : config.cashfreeRecurringAmount;
       const { inserted } = await recordSubscriptionPayment(serviceClient, {
         userId,
         phone,
         paymentId,
         cashfreeSubscriptionId: subscriptionId,
-        amount: planType === "trial" ? config.cashfreeTrialAmount : config.cashfreeRecurringAmount,
+        amount: recordedAmount,
         planType,
         status: "success",
       });
       logPayment(FN, "payment_success_recorded", { userId, subscriptionId, planType, inserted });
+      // Only a payment recorded now: a repeated webhook must not count twice.
+      if (inserted) {
+        await trackUserEvent(serviceClient, config.mixpanelToken, {
+          fn: FN,
+          event: "Payment Succeeded",
+          userId,
+          insertId: paymentId,
+          properties: {
+            payment_type: paymentTypeFor(planType, previousStatus),
+            plan_type: planType,
+            amount: recordedAmount,
+            currency: "INR",
+            via: "webhook",
+          },
+        });
+      }
     }
 
     if (eventType === "SUBSCRIPTION_PAYMENT_FAILED") {
@@ -138,17 +183,49 @@ Deno.serve(async (req) => {
         expireProfileOnFailure: mandateOnProfile,
       });
       logPayment(FN, "payment_failed_recorded", { userId, subscriptionId, planType, inserted }, "warn");
+      if (inserted) {
+        await trackUserEvent(serviceClient, config.mixpanelToken, {
+          fn: FN,
+          event: "Payment Failed",
+          userId,
+          insertId: paymentId,
+          properties: {
+            payment_type: paymentTypeFor(planType, previousStatus),
+            plan_type: planType,
+            amount: planType === "trial"
+              ? config.cashfreeTrialAmount
+              : config.cashfreeRecurringAmount,
+            currency: "INR",
+            via: "webhook",
+          },
+        });
+      }
     }
 
     if (eventType === "SUBSCRIPTION_STATUS_CHANGED") {
       const cashfreeStatus = payload.data?.subscription_status?.toUpperCase() ?? "";
+      const statusAlreadyEnded = profile?.subscription_status === "cancelled" ||
+        profile?.subscription_status === "expired";
       // A change on an older mandate says nothing about the one the user is on now.
       if (!mandateOnProfile) {
         logPayment(FN, "status_change_for_old_mandate", { userId, subscriptionId, cashfreeStatus });
       } else if (isCancellationStatus(cashfreeStatus)) {
         await markSubscriptionCancelled(serviceClient, userId);
+        // Sent only on the change itself: Cashfree may repeat the webhook.
+        if (!statusAlreadyEnded) {
+          await trackStatusChange(serviceClient, config.mixpanelToken, userId, subscriptionId, {
+            event: "Subscription Cancelled",
+            cashfreeStatus,
+          });
+        }
       } else if (isExpiredStatus(cashfreeStatus)) {
         await markSubscriptionExpired(serviceClient, userId);
+        if (profile?.subscription_status !== "expired") {
+          await trackStatusChange(serviceClient, config.mixpanelToken, userId, subscriptionId, {
+            event: "Subscription Expired",
+            cashfreeStatus,
+          });
+        }
       }
     }
 

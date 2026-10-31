@@ -78,6 +78,12 @@ Unfinished parts of [10-analytics.md](10-analytics.md); its "Known gaps" section
 | iOS sends nothing | The SDKs are wired on Android only. |
 | No consent screen | The Facebook SDK collects the advertising ID once configured. Play's advertising-ID declaration must now say yes. |
 | Debug and release share a project | Test runs are mixed in with real users. The 2026-10-21 check already put test-mode events (person `debug-user`, `simulated: true`) into both. |
+| Ad attribution not live (2026-10-31) | The backend is live (migration, both private rows, `meta-install-referrer`, and the Mixpanel changes to `cashfree-webhook`/`verify-cashfree-subscription`, all 2026-10-31), but no build with the app side is released. `meta-install-referrer` is deployed and decrypts a sample made with the configured key, but has not seen a real Meta referrer. Plan: [ai/TASK_LOG.md](ai/TASK_LOG.md) 2026-10-31. |
+| A wrong Meta key loses ads for good | A 64-hex key from the wrong app makes every Meta install get `422 decrypt_failed`, which the app treats as final (as specified). Those installs are never decoded, even after the key is fixed. Watch `supabase functions logs meta-install-referrer` on release day. Making `decrypt_failed` retryable would avoid it. |
+| Identity merge unchecked | The app identifies by Supabase user id at sign-in, but whether Mixpanel joins pre-login and post-login events depends on the project's ID management setting, never checked. See [DEEPLINK_GUIDE.md](DEEPLINK_GUIDE.md#5-check-that-pre-login-and-post-login-events-join). |
+| Webhook and verify may record one payment twice | Both write `subscription_payments`, deduplicated by `payment_id`, but `cashfree-webhook` takes only string ids (else `<sub>:<event>:<time>`) while `verify-cashfree-subscription` takes `payment_id ?? cf_payment_id ?? <sub>:<plan>`. If they disagree, the ledger gets two rows and `Payment Succeeded` is sent twice. Found 2026-10-31, predates attribution. |
+| Recorded amounts ignore per-source prices | `cashfree-webhook` and `verify-cashfree-subscription` record (and now report) the global trial/recurring amounts, not a source's own. Found 2026-10-31. |
+| Server events have no app version | `Payment Succeeded` and the other server events cannot be split by `app_version`; filter by date. |
 
 ## Website
 

@@ -37,7 +37,7 @@ class RemoteConfig {
       'Secure UPI AutoPay',
     ],
     this.featureIcons = const <String>[],
-    this.showStrikePrice = true,
+    this.showStrikePrice = false,
     this.accentColor,
     this.autoPayText = '',
     this.socialProofs = const <String>[],
@@ -94,7 +94,8 @@ class RemoteConfig {
   /// paywall's icon list. Blank, unknown or missing shows a tick.
   final List<String> featureIcons;
 
-  /// The monthly price struck through beside the trial price.
+  /// The monthly price struck through beside the trial price. Off unless the
+  /// backend sends `true` (owner's decision, 2026-10-31).
   final bool showStrikePrice;
 
   /// The pill, the large price and the icons. Null uses the theme colour.

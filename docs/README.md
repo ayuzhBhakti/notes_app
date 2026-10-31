@@ -16,6 +16,9 @@ Start here. Every document in this folder describes the code as it actually is, 
 | 8 | [End-to-end testing](08-e2e-testing.md) | Running and writing Maestro flows against a real device |
 | 9 | [Deep-link onboarding](09-deep-link-onboarding.md) | The Evos interface shown to users who arrive by link: phone sign-in, paywall, maintenance; the Supabase backend and its settings; Cashfree; App Links setup |
 | 10 | [Analytics](10-analytics.md) | Every Mixpanel and Facebook event, what triggers it, and where the keys go |
+| — | [Ad attribution guide](DEEPLINK_GUIDE.md) | For the team: making campaign links, which ad each user came from, Mixpanel funnels by ad, the after-release check |
+| — | [Admin panel guide](ADMIN_PANEL_GUIDE.md) | For admins, in plain words: unlocking the panel, adding a source, what each field changes, the rules, install links |
+| — | [Mixpanel events guide](MIXPANEL_EVENTS_GUIDE.md) | For the team, in plain words: every app and server event, the ad fields on each, ready-made reports |
 
 ## For AI agents
 
@@ -39,7 +42,8 @@ After every task:
 | A screen, a route, or what the user sees | [03-app-flow.md](03-app-flow.md), and the Maestro flows in `.maestro/` that select on it |
 | A Maestro flow or a semantics identifier | [08-e2e-testing.md](08-e2e-testing.md) |
 | The onboarding flow, the link, payment, what is stored on the device, or anything in `supabase/` (a table, a policy, an `app_config` key, an edge function) | [09-deep-link-onboarding.md](09-deep-link-onboarding.md) |
-| An analytics event, property, or key | [10-analytics.md](10-analytics.md) |
+| An analytics event, property, or key | [10-analytics.md](10-analytics.md), [MIXPANEL_EVENTS_GUIDE.md](MIXPANEL_EVENTS_GUIDE.md) |
+| A field, rule or screen of the admin panel (`admin/`) | [ADMIN_PANEL_GUIDE.md](ADMIN_PANEL_GUIDE.md) and `admin/README.md` |
 | A provider, a service, a folder, or an import rule | [02-architecture.md](02-architecture.md), [ai/AGENT_CONTEXT.md](ai/AGENT_CONTEXT.md) |
 | A Firestore field, collection, query, or `firestore.rules` | [04-data-model.md](04-data-model.md) |
 | A dependency, SDK version, Gradle or Xcode setting | [01-overview.md](01-overview.md), [05-setup-and-build.md](05-setup-and-build.md) |

@@ -17,6 +17,132 @@ One entry per completed task, newest first. Keep entries short: what changed, wh
 
 ---
 
+## 2026-10-31 — Two shareable guides: admin panel and Mixpanel events
+
+**Request:** two simple docs to share: how to use the admin panel, and every Mixpanel/backend event. Markdown files, not Claude artifacts.
+**Changes:** `docs/ADMIN_PANEL_GUIDE.md` (for admins: unlocking, adding a source, every field from `admin/form.js` with what it changes, the rules — blank inherits except login slides, the Cashfree plan id overriding the monthly charge, hiding, when changes show, Meta installs arriving as `apps.facebook.com` — install links, preview, common problems). `docs/MIXPANEL_EVENTS_GUIDE.md` (for the team: how tracking works, the journey, the ad fields, all 27 app events, the 4 server events, the 3 Facebook events, the profile, reports, rules, what is live). Linked from `docs/README.md`, and added to its "keeping docs current" table. Two empty Claude Docs had been created before the user asked for files ("Evos Admin Panel Guide", "Evos Mixpanel Events Guide"); left for the user to delete.
+**Verified:** every field, label and button name read from `admin/index.html`/`admin/form.js`; every event from `lib/services/analytics.dart` and `docs/10-analytics.md`. Not reviewed by an admin.
+**Docs updated:** `docs/ADMIN_PANEL_GUIDE.md` (new), `docs/MIXPANEL_EVENTS_GUIDE.md` (new), `docs/README.md`, `docs/ai/TASK_LOG.md`.
+**Follow-ups:** the admin panel needs a hosted address and `admin_panel_secret` before an admin can use it.
+
+---
+
+## 2026-10-31 — "App bar space" on the web page: checked in the app and the admin preview
+
+**Request:** the web page still seemed to keep the app bar's space; check the app and the admin panel.
+**Found:** *Admin preview:* the live-site layer was placed at a fixed `top: 84px` (28 px status bar + the old 56 px app bar), so a 56 px gap stayed. Fixed in `admin/preview/preview.css` to `top: 28px`. *App:* no gap. A test-mode build of the current code on the test phone, seeded onto the web stage, shows the WebView starting right under the status bar. The bar seen at the top (logo, "Evos", ☰) is **the website's own header**, part of the page at the global `webview_url` (`subtle-sopapillas-a755d8.netlify.app`). That site also still describes the old Google-sign-in notes app.
+**Verified:** screenshots on RZ8T606RJ0N (loading, then loaded). The admin change was not opened in a browser.
+**Docs updated:** `docs/ai/TASK_LOG.md`.
+**Follow-ups:** the site's header and copy are the website's to change, not the app's. The test-mode build is still installed on the test phone (uninstall it before a Play install).
+
+---
+
+## 2026-10-31 — Admin preview: web page without the app bar
+
+**Request:** the admin panel's phone preview still showed the web page's app bar, removed from the app earlier today.
+**Changes:** `admin/preview/screens.js` `web()` no longer draws the bar (brand header, Reload, ⋮ menu) in either state (page set, or "You're all set"). `appBar` stays for the code screen's back arrow. The "Website link" field highlights the page area, which is unchanged.
+**Why:** the preview is a hand-made copy of the screens; the app-bar removal (entry below) missed it. A screen change must be mirrored in `admin/preview/` (09-deep-link-onboarding.md).
+**Verified:** rendered `renderScreen("web", …)` with and without `webview_url`: no `appbar`, no `refresh`, no `more_vert`, content present. `deno test admin/preview/resolve.test.js` 20/20. Not opened in a browser.
+**Docs updated:** `docs/ai/TASK_LOG.md`.
+**Follow-ups:** none.
+
+---
+
+## 2026-10-31 — Login slides: a source never inherits the global carousel
+
+**Request:** if a `webview_sources` row has no `login_slide_images`/`login_slide_titles`, show no carousel; it was showing the global `app_config` slides.
+**Changes:** `SupabaseEvosBackend.mergeSourceRow` blanks `login_slide_images` and `login_slide_titles` before laying a matched row on top (`_sourceOnlyColumns`), so a source shows only its own slides and none when its columns are NULL. Every other column still inherits on NULL. Installs that match no row (organic, unknown, unmatched source) still get the global slides. Mirrored in the admin preview (`mergeRows` in `admin/preview/resolve.js`) and its help text (`admin/form.js`). Tests: two in `onboarding_logic_test.dart` (no slides → empty carousel; own slides → shown); `admin/preview/resolve.test.js` (one new, one updated).
+**Verified:** `flutter analyze` clean; `flutter test` 183/183 (the no-slides test failed first); `deno test admin/preview/resolve.test.js` 20/20 (failed first). Not run on a phone. A phone that already cached the global slides switches on its next settings fetch, and the sign-in layout (frozen per launch) follows on the launch after.
+**Docs updated:** `docs/09-deep-link-onboarding.md`, `docs/ai/AGENT_CONTEXT.md`, `docs/ai/TASK_LOG.md`.
+**Follow-ups:** ships with the next build (it is app code, not a backend setting).
+
+---
+
+## 2026-10-31 — Release readiness check (1.0.3+4)
+
+**Request:** check whether the app is ready for release.
+**Verified:** `flutter analyze` clean; `flutter test` 181/181; `deno test` 29/29; `check-syntax` OK on both flows. `flutter build appbundle` succeeded: `app-release.aab` 62.6 MB, version `1.0.3+4` (above live versionCode 2), signed by `CN=Spacewire`, SHA-256 `C3:40:52:4B…`, the upload key. On the test phone (RZ8T606RJ0N, Evos not installed before), a test-mode debug build passed **Maestro `review_account` (1m 46s) and `onboarding` (1m 28s)**. Uninstalling it afterwards was refused by the permission system, so it is still on the phone. Live backend: Cashfree production with id/secret set, plan set, SMS settings set, `webview_url` set, Meta key and Mixpanel token set; all six functions active. Live ledger: 6 successful ₹3 trials (last 2026-10-30), 7 failed trials, 1 failed monthly debit.
+**Not ready yet (non-code):** (1) the code is uncommitted on `feat/ad-attribution` (44 files, including separate admin-panel work) and should be committed and merged before the upload build; (2) the live `paywall_show_strike_price` is still `true`; (3) the Play listing, screenshots and `website/` still describe a notes app (Play metadata policy); (4) the review number gets a different app (cloaking risk, owner accepted); (5) the privacy policy update is not uploaded anywhere (no domain), and Play's Data safety form must cover phone number, payments, app activity, device/advertising ID and ad attribution; (6) not exercised on a phone in a real-backend build: the Meta decode (needs a Play install), the no-strike paywall.
+**Docs updated:** `docs/ai/TASK_LOG.md`, `docs/ai/AGENT_CONTEXT.md`.
+**Follow-ups:** the six items above; uninstall the test build from the phone before the Play internal-track install.
+
+---
+
+## 2026-10-31 — Paywall: struck-through monthly price off by default
+
+**Request:** remove the struck-through ₹299 on the paywall ("not needed").
+**Changes:** it is the backend switch `paywall_show_strike_price`, so the switch stays and its default flips: `RemoteConfig.showStrikePrice` defaults to `false` (blank, missing or unreadable = hidden; `true` still shows it). Mirrored in the admin panel preview (`admin/preview/resolve.js`, default `false`) as 09-deep-link-onboarding.md requires. The AutoPay sentence, which states the monthly price, is untouched (rule 16). Tests: the two paywall widget tests now expect no `₹299`/`₹499` on its own; new "the backend can turn the struck-through price back on"; logic tests expect the `false` default; `admin/preview/resolve.test.js` likewise.
+**Not done:** setting the live `app_config.paywall_show_strike_price` from `true` to `false` was **refused by the permission system**. The live row is explicitly `true`, which overrides the new default, so the struck price keeps showing until the owner sets it to `false` (Table Editor). No `webview_sources` row overrides it.
+**Verified:** `flutter analyze` clean; `flutter test` 181/181 (the changed expectations failed first); `deno test admin/preview/resolve.test.js` 19/19 (failed first). Not run on a phone.
+**Docs updated:** `docs/09-deep-link-onboarding.md`, `docs/ai/AGENT_CONTEXT.md`, `docs/ai/TASK_LOG.md`.
+**Follow-ups:** the owner sets the live row to `false`.
+
+---
+
+## 2026-10-31 — Web page screen: app bar removed
+
+**Request:** remove the app bar from the web page screen ("not needed"). Asked whether Log out (only there, plus Reload) should go too; the owner chose to remove it.
+**Changes:** `lib/screens/onboarding/web_screen.dart`: no `AppBar` (it held the logo and name, Reload, and a ⋮ menu with Log out); the body is in a `SafeArea`; the WebView is keyed by `ValueKey(url)` instead of a `GlobalKey` that only Reload used; `brand.dart` import dropped. The failed-load "Try again" keeps its own reload. Tests: `onboarding_flow_test.dart` replaces "Log out on the web page returns to the number" with "the web page is full screen: no app bar, Log out or Reload", and "Check again" now expects no app bar; `analytics_test.dart`'s "logging out is tracked, then the identity is reset" goes through the review account's Profile Log out (same `OnboardingController.signOut`). `.maestro/flows/onboarding.yaml` asserts the menu and Log out are gone instead of logging out.
+**Why:** owner's decision. Consequence, accepted: subscribers have no Log out anywhere (paywall none since 2026-10-14); switching numbers needs clearing the app's data. `Signed Out` now fires only for the review account.
+**Verified:** `flutter analyze` clean; `flutter test` 180/180 (the two new expectations failed first); `./tool/maestro.sh check-syntax .maestro/flows/onboarding.yaml` OK. Not run on a phone (the flow needs a test-mode build).
+**Docs updated:** `docs/09-deep-link-onboarding.md`, `docs/08-e2e-testing.md`, `docs/03-app-flow.md`, `docs/10-analytics.md`, `docs/ai/AGENT_CONTEXT.md`, `docs/ai/TASK_LOG.md`.
+**Follow-ups:** none.
+
+---
+
+## 2026-10-31 — Meta decryption key set on the live project; function deployed and verified
+
+**Request:** put the owner's Install Referrer Decryption Key in the backend and check that it works.
+**Changes:** `supabase secrets set META_INSTALL_REFERRER_KEY` was refused (the CLI account lacks the privilege for project secrets). Instead inserted the single private row `app_config.meta_install_referrer_key` (`is_public = false`) with `supabase db query --linked`; confirmed 64 hex characters without printing it. The migration `20261031120000` was **not** pushed (its insert is `ON CONFLICT DO NOTHING`, so pushing it later keeps the key). `supabase functions deploy meta-install-referrer --no-verify-jwt` was **refused by the permission system** (production deploy), so the function is not live. No file in the repo contains the key.
+**Verified:** locally, the function's own `decodeMetaReferrer` with this key decrypts a sample encrypted with it (campaign, ad set, ad and 18-digit ids exact) and refuses another app id (`other_app`). That proves the key's format and the decrypt path, not that Meta encrypts with this key: only a real Meta ad-click referrer can show that. `supabase functions list`: `meta-install-referrer` absent.
+**Docs updated:** `docs/ai/TASK_LOG.md`, `docs/ai/AGENT_CONTEXT.md`, `docs/07-known-issues.md`, `docs/09-deep-link-onboarding.md`.
+**Then:** the owner deployed `meta-install-referrer` (v1, ACTIVE, `verify_jwt = false`). Live checks, plain POST with no auth header (as the app calls it before sign-in): organic referrer → `200 {"ad":null}`; Meta source with junk content → `422 decrypt_failed`; a sample encrypted with the configured key → `200` with campaign, ad set, ad and the 18-digit ids exact (so the live function reads the key row and decrypts); another app's id → `422 other_app`.
+**Then (owner: "deploy that also"):** `supabase db push` applied `20261031120000_user_attribution.sql` (dry run first: the only pending migration). Checked live: the 11 `profiles` columns exist; `save_user_attribution` is `SECURITY DEFINER`, `search_path=public`, executable by `authenticated` and not `anon`; `profiles` still has only `profiles_select_own`; `meta_install_referrer_key` kept (64, private). Filled the private `mixpanel_token` row with the app's own token from `analytics_keys.xml` (32 hex, `is_public = false`). `deno check` clean on both payment functions, 29/29 Deno tests. `supabase functions deploy cashfree-webhook` was **refused by the permission system** (production deploy), so `cashfree-webhook` (v2) and `verify-cashfree-subscription` (v1) still run the old code: no server Mixpanel events yet. Nothing breaks meanwhile: the old functions do not read the new columns.
+**Then:** the owner deployed both: `cashfree-webhook` v3 (`verify_jwt = false`) and `verify-cashfree-subscription` v2 (`verify_jwt = true`), 2026-10-31 16:24. Smoke checks that cannot touch a payment: unsigned webhook → `401 Invalid webhook signature`; verify without auth → `401 UNAUTHORIZED_NO_AUTH_HEADER`; `meta-install-referrer` organic → `200 {"ad":null}`. Live data: 0 of 40 profiles have an ad (expected until the app release); no payment recorded since the deploy, so no server Mixpanel event has fired yet.
+**Follow-ups:** watch for the first `Payment Succeeded` in Mixpanel (and `mixpanel` lines in `supabase functions logs cashfree-webhook`); the app release (version bump, `.aab`, Play upload); a real Meta ad-click install to prove the key; the identity-merge check and the after-release check in `docs/DEEPLINK_GUIDE.md` §5 and §8.
+
+---
+
+## 2026-10-31 — Ad attribution: Meta install referrer decode, attribution model, server Mixpanel events
+
+**Request:** for every user, know which ad they came from and put it on every Mixpanel event (app and backend), so ad → install → sign-in → checkout → trial → paid can be followed. Adapted from the Bhaktilok prompt and guide.
+**Changes:**
+- **Backend:** `supabase/functions/_shared/meta_referrer.ts` (parse Meta's `utm_content` envelope, check app id `2015134735846694`, AES-256-GCM decrypt with the tag at the end of `data`, map adgroup→ad / campaign→ad set / campaign_group→campaign, ids read from raw JSON as text). New function `meta-install-referrer` (`verify_jwt = false` in `config.toml`; 200 `{ad}` / `{ad:null}`, 422 `decrypt_failed`/`other_app`, 400, 500 `not_configured`; stores nothing; non-Meta referrers answered without a DB read; key read from the one private row `meta_install_referrer_key`, cached 60 s, env `META_INSTALL_REFERRER_KEY` fallback; never logs key or referrer). `_shared/mixpanel.ts` (server events with the user's ad from `profiles`, `distinct_id` = user id, `$insert_id` = payment id, 3 s timeout, never throws). `cashfree-webhook` sends `Payment Succeeded`/`Payment Failed` (only when the payment row is newly inserted), `Subscription Cancelled`/`Subscription Expired` (only on a real status change); `verify-cashfree-subscription` sends `Payment Succeeded` for a payment it records first. `payment_type`: trial / auto_renewal / retry. `app_config.ts`: `mixpanelToken`. Also fixed a pre-existing type error in `verify-cashfree-subscription` (`isAuthorizationSuccess` took `string | undefined`, was passed `string | null`; `deno check` failed on `main`; type-only change).
+- **Migration** `20261031120000_user_attribution.sql`: `profiles` gains `install_source`, `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, `campaign_id`, `adset_id`, `ad_id`, `gclid`, `attributed_at`; `SECURITY DEFINER` RPC `save_user_attribution` (own row via `auth.uid()`, whitelisted `install_source`, length caps, organic/unknown never replaces a known ad; EXECUTE revoked from PUBLIC and anon, granted to authenticated); private rows `meta_install_referrer_key`, `mixpanel_token` (blank). No new write policy.
+- **App:** `lib/models/attribution.dart` (one model: install_source meta/google_ads/organic/other/unknown, utm_*, ids, gclid, gad_campaignid → campaign_id; `MetaAd`, `MetaDecodeResult`). `lib/services/attribution_service.dart` (`recordInstallAttribution` in `main()` when Play's answer is final; `AttributionService.start()` after the first frame decodes a Meta click by sending the **full** referrer, retries no-answer/5xx/401/403/404/408/429 on up to 5 launches, settles on other 4xx; reads the referrer once after an update for older installs; `recordLink` for links with utm_*; `syncToServer` via the RPC, per sign-in, skipped for the review account). `InstallSource` now only feeds `install_source_v1` (unchanged behaviour); its parser is shared as `referrerPairs`. `Analytics`: `registerAttribution` (channel `setAttribution`), `installAttributed(Attribution…)` now once per install, new `metaAdAttributed`; `Web Page Viewed`'s `install_source` renamed `config_source`. `EvosBackend.decodeMetaReferrer`/`saveAttribution`. `OnboardingStore` attribution keys. Kotlin `MixpanelSdk`/`AnalyticsChannel`: stores latest + first, re-registers super properties (unregistering stale ones), `people.set` latest (unsetting absent fields), `people.setOnce` first_* + install_source; legacy `install_*` storage kept until the first `setAttribution`.
+- **Review** (ecc code-reviewer): 0 critical/high. Fixed: unauthenticated function read all of `app_config` per call; sync marker was per device not per user; late Meta decode overwrote a newer link; duplicate cancel/expire events; stale Mixpanel person fields; failed trial debit reported at the recurring amount. Not changed (spec says stop on 4xx): a wrong key settles installs as `decrypt_failed` for good — logged in 07-known-issues.
+- `website/privacy-policy.html`: the ad and Google's click id are kept with the account. Date bumped. Not uploaded.
+**Why:** Meta encrypts the ad in the referrer; only a server holding the key can read it. Funnels start at `OTP Verified` because identity merge is unverified.
+**Verified:** `flutter analyze` clean; `flutter test` 180/180 (29 new in `test/attribution_test.dart` and updated `analytics_test.dart`); `deno check` clean on all six functions; `deno test --allow-net supabase/functions/_shared/` 29/29 (12 `meta_referrer.test.ts`, 6 `mixpanel.test.ts`, 11 existing), decrypt tested with per-run random keys only; `flutter build apk --debug` builds. **Not run on a phone, not deployed, no real Meta referrer decoded, Mixpanel identity merge not measured** (no Mixpanel access here).
+**Deploy plan (owner runs; nothing done here):**
+1. `cd notes_app && ~/.local/bin/supabase db push` — applies `20261031120000_user_attribution.sql`. Check: Table Editor → `profiles` has the 11 new columns; `app_config` has blank private `meta_install_referrer_key` and `mixpanel_token`.
+2. Table Editor → `app_config`: `meta_install_referrer_key` = the 64-hex key (Meta App Dashboard → Settings → Basic → Android → Install Referrer Decryption Key); `mixpanel_token` = the token in `android/app/src/main/res/values/analytics_keys.xml`. Keep both `is_public = false`. (Or `supabase secrets set META_INSTALL_REFERRER_KEY=…` / `MIXPANEL_TOKEN=…`.)
+3. `deno check` each, then `supabase functions deploy meta-install-referrer` (picks up `verify_jwt = false` from `config.toml`), `supabase functions deploy cashfree-webhook`, `supabase functions deploy verify-cashfree-subscription`.
+4. Smoke test: `curl -X POST https://sqvlgiqypqvjykczuhgz.supabase.co/functions/v1/meta-install-referrer -H 'Content-Type: application/json' -d '{"referrer":"utm_source=google-play&utm_medium=organic"}'` → `{"ad":null}`. With `utm_source=apps.facebook.com&utm_content=x` → 422 `decrypt_failed` (proves the key is read; a 500 `not_configured` means it is not).
+5. Bump the version, build the `.aab`, upload to internal testing; install from Play on a phone with no work account, via a real Meta ad click if possible; check logs for `decoded` and Mixpanel for `Meta Ad Attributed`.
+6. After release: the check in `docs/DEEPLINK_GUIDE.md` §8 (≥90% of new Meta installs get `Meta Ad Attributed`; `Checkout Started`/`Payment Succeeded` carry `utm_content`) and the identity check in §5.
+**Docs updated:** `docs/DEEPLINK_GUIDE.md` (new), `docs/10-analytics.md`, `docs/09-deep-link-onboarding.md`, `docs/04-data-model.md`, `docs/07-known-issues.md`, `docs/README.md`, `docs/ai/AGENT_CONTEXT.md`, `docs/ai/TASK_LOG.md`, `website/privacy-policy.html`.
+**Follow-ups:** deploy (above); measure identity merge; decide whether Meta ad installs (`apps.facebook.com`) should get a `webview_sources` row; consider making `decrypt_failed` retryable; the webhook/verify payment-id mismatch; iOS needs SKAdNetwork/AEM (not built).
+
+---
+
+## 2026-10-31 — Admin panel: live phone preview of every onboarding screen
+
+**Request:** show all of the app's screens in the source admin panel and reflect every change live, so the owner knows what a field changes; design the screens to match the mobile app exactly. Plan first.
+**Changes (front-end only, `admin/`; nothing deployed, no backend/DB/app change):**
+- `admin/preview/resolve.js` (+ `resolve.test.js`, 19 Deno tests): a rule-for-rule JS port of `RemoteConfig.fromRows` (blank/optional/list/paired rules, https-only links incl. Dart's empty-host case, ratio clamp, amount rules, slide pairing, `{trial}`/`{recurring}`, icon names).
+- `admin/preview/theme.js` + vendored `vendor/material-color-utilities-0.3.0.js`: `ColorScheme.fromSeed(fidelity)` exactly as `BrandShell`. Checked against Flutter's Dart `material_color_utilities` 0.13.0 for 4 seeds × light/dark: identical hex for every role used.
+- `admin/preview/screens.js` + `preview.css`: Sign-in (carousel and plain layouts), Code, Paywall, UPI sheet, Processing, Web page ("You're all set" when no link), at the Flutter widgets' dp sizes, M3 2021 type scale, Roboto, Material Symbols Rounded.
+- `admin/preview/preview.js`: big phone that jumps to the focused field's screen, scrolls to it and outlines its part (dashed "appears here" ghost for blank, hidden parts); live rail of all six screens; "All screens" grid; dark mode; slideshow 2 s / social proof 3 s; paywall video kept across re-renders; the web page in a sandboxed frame (no `allow-same-origin`); `stop()` on leaving the editor.
+- `admin/form.js` (form code moved out of `app.js`): each field names its screen/part; Default/Custom tag per field; icon picker (28 app icons or an https image) on features and social proof; features are icon+label rows (icon *n* pairs with the *n*-th filled label, as the app does). Upsert payload unchanged (same columns, blank → null).
+- `admin/app.js`, `admin/index.html`: wiring, wider editor with sticky preview column, sticky header with Save while editing, floating Preview button on narrow screens, a strict CSP (own scripts only; inline handlers removed).
+**Why:** the old preview was one simplified paywall card covering 6 of ~30 fields. The colour library is vendored, not loaded from a CDN, because the page holds the admin password.
+**Verified:** `deno test admin/preview/resolve.test.js` 19/19; `deno lint admin/` clean. In Chrome (local server, admin function stubbed in-page so nothing was written; public `app_config` read live): every screen rendered with the real global settings (video, slides, logo, web page); focus → screen jump + outline; ghosts; badge/price/autopay update together; icon picker writes `diamond|ad_free|crown|cloud`; save payload checked; dark scheme `#1F0F12` for `#E91E63` matches Dart; broken images fall back; Enter does not reload; Cancel stops video and unloads the frame; no CSP violations; 390px width has no horizontal scroll. Code review (ecc:code-reviewer): approve; both MEDIUMs (CDN script, no teardown) and the LOWs fixed. `flutter analyze`/`flutter test` were **not** clean, but from unrelated in-progress attribution work already in the tree (`lib/models/attribution.dart`, `install_source.dart`, `test/attribution_test.dart`); no Dart was touched by this task.
+**Docs updated:** `admin/README.md`, `docs/09-deep-link-onboarding.md`, `docs/ai/AGENT_CONTEXT.md` (where-things-are row, rule 27, last-verified date), `docs/ai/TASK_LOG.md`.
+**Follow-ups:** not deployed to the Netlify panel (`graceful-sundae-161b78`) — owner's call. A self-hosted Supabase URL would need adding to the CSP `connect-src`. The highlight-colour swatch shows the default purple when blank even if the brand colour differs (the preview itself is correct).
+
+---
+
 ## 2026-10-26 — Portrait lock + phone-input autofill fix
 
 **Request:** (1) lock the app to portrait (stop rotation); (2) a keyboard-suggested/autofilled number like `917409290026` was keeping only the first 10 digits (`9174092900`) instead of stripping the `91`.

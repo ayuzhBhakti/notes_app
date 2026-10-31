@@ -10,6 +10,7 @@ import 'models/onboarding.dart';
 import 'models/review_account.dart';
 import 'models/remote_config.dart';
 import 'services/analytics.dart';
+import 'services/attribution_service.dart';
 import 'services/auth_service.dart';
 import 'services/deep_link_service.dart';
 import 'services/install_referrer_service.dart';
@@ -293,6 +294,17 @@ final Provider<EvosBackend> evosBackendProvider = Provider<EvosBackend>((
   return backend;
 });
 
+/// Which ad the install came from; see AttributionService.
+final Provider<AttributionService> attributionServiceProvider =
+    Provider<AttributionService>(
+  (Ref ref) => AttributionService(
+    store: ref.watch(onboardingStoreProvider),
+    backend: ref.watch(evosBackendProvider),
+    analytics: ref.watch(analyticsProvider),
+    readReferrer: const InstallReferrerService().fetch,
+  ),
+);
+
 /// Real money whenever there is a backend to create the mandate. Without one
 /// there is nothing to pay through, and a debug build simulates.
 final Provider<PaymentGateway> paymentGatewayProvider =
@@ -388,11 +400,19 @@ class OnboardingController extends Notifier<OnboardingState> {
         deepLinks.links.listen(_onLink);
     ref.onDispose(subscription.cancel);
     final Uri? initial = deepLinks.initialLink;
-    final bool byReferrer =
-        isOnboardingReferrer(ref.watch(installReferrerProvider));
+    final String? referrer = ref.watch(installReferrerProvider);
+    final bool byReferrer = isOnboardingReferrer(referrer);
     if (byReferrer || (initial != null && isOnboardingLink(initial))) {
       ref.read(analyticsProvider).deepLinkOpened(afterInstall: byReferrer);
     }
+    // After build, like refresh below. Decodes a Meta ad click, attributes an
+    // install made by an older version, and saves the ad for a signed-in
+    // user; a link with utm_* then becomes the latest ad.
+    final AttributionService attribution = ref.read(attributionServiceProvider);
+    Future<void>.microtask(() async {
+      await attribution.start(referrerThisLaunch: referrer);
+      if (initial != null) await attribution.recordLink(initial);
+    });
 
     final OnboardingStore store = ref.watch(onboardingStoreProvider);
     final OnboardingState stored = store.load();
@@ -411,6 +431,7 @@ class OnboardingController extends Notifier<OnboardingState> {
   }
 
   void _onLink(Uri uri) {
+    unawaited(ref.read(attributionServiceProvider).recordLink(uri));
     if (!isOnboardingLink(uri)) return;
     ref.read(analyticsProvider).deepLinkOpened(afterInstall: false);
   }
@@ -618,6 +639,10 @@ class PhoneAuthController extends Notifier<PhoneAuthState> {
       analytics.otpVerified(
         userId: result.userId,
         newUser: result.isNewUser,
+      );
+      // The profile row exists now: put the install's ad on it.
+      unawaited(
+        ref.read(attributionServiceProvider).syncToServer(newSignIn: true),
       );
       // Someone who already pays, on a new phone or after signing out, goes
       // straight in. If the server cannot be asked they see the paywall,

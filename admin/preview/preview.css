@@ -1,0 +1,324 @@
+/* The phone preview. Inside .phone-screen, 1px = 1dp on a 360x800 Android
+   phone, and every size is the Flutter widget's own (see screens.js). Colours
+   are ColorScheme roles set as custom properties by theme.js. */
+
+/* ---- Icons: Material Symbols Rounded, filled like Icons.*_rounded ---- */
+.ms {
+  font-family: "Material Symbols Rounded"; font-weight: normal; font-style: normal;
+  line-height: 1; letter-spacing: normal; text-transform: none; white-space: nowrap;
+  display: inline-block; direction: ltr; flex: none; -webkit-font-smoothing: antialiased;
+  font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 24;
+}
+.ms.o { font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24; }
+
+/* ---- Panel chrome around the phone ---- */
+.pv { display: flex; flex-direction: column; height: 100%; min-height: 0; gap: 10px; }
+.pv-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex: none; }
+.pv-heading { font-weight: 700; font-size: 14px; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.pv-heading .ms { font-size: 18px; color: var(--brand); }
+.pv-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.pv .pv-chip {
+  display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px 5px 8px; font-size: 12.5px;
+  border-radius: 99px; font-weight: 600; white-space: nowrap;
+}
+.pv-chip[hidden] { display: none !important; }
+.pv-chip .ms { font-size: 16px; width: 16px; overflow: hidden; }
+.pv-focus { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
+.pv-focus[hidden], .pv-grid[hidden] { display: none; }
+.pv-main { flex: 1; min-height: 0; display: flex; gap: 8px; }
+.pv-stage { flex: 1; min-width: 0; min-height: 260px; display: flex; justify-content: center; align-items: flex-start; --s: 1; }
+.pv-scaler { width: calc(376px * var(--s)); height: calc(816px * var(--s)); flex: none; }
+.pv-scaler > .phone { transform: scale(var(--s)); transform-origin: 0 0; }
+
+.pv-hint { font-size: 12.5px; color: var(--muted); text-align: center; min-height: 34px; line-height: 1.45; }
+.pv-hint b { color: var(--ink); }
+.pv-note { color: var(--muted); }
+.pv-note a { color: var(--brand); font-weight: 600; }
+
+/* A rail of every screen beside the big phone; each is live and clickable. */
+.pv-thumbs {
+  display: flex; flex-direction: column; gap: 4px; flex: none; width: 76px; overflow-y: auto;
+  scrollbar-width: thin; padding-right: 2px;
+}
+.pv .pv-thumb {
+  padding: 5px 2px 3px; border: 1.5px solid transparent; border-radius: 12px; background: none;
+  display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; cursor: pointer; flex: none;
+}
+.pv .pv-thumb:hover { background: rgba(0, 0, 0, .04); }
+.pv .pv-thumb.active { border-color: var(--brand); background: rgba(109, 40, 217, .06); }
+.pv-thumb-frame { width: calc(376px * .12); height: calc(816px * .12); overflow: hidden; pointer-events: none; }
+.pv-thumb-frame .phone { transform: scale(.12); transform-origin: 0 0; }
+.pv-thumb-label { font-size: 10.5px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+.pv-thumb.active .pv-thumb-label { color: var(--brand); }
+
+.pv-grid {
+  display: grid; grid-template-columns: repeat(var(--cols, 3), 1fr); gap: 16px; --s: .5;
+  flex: 1; min-height: 0; overflow: auto; align-content: center;
+}
+.pv-cell { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; }
+.pv-cell:hover figcaption { color: var(--brand); }
+.pv-cell-scaler { width: calc(376px * var(--s)); height: calc(816px * var(--s)); }
+.pv-cell-scaler .phone { transform: scale(var(--s)); transform-origin: 0 0; pointer-events: none; }
+.pv-cell figcaption { font-size: 12.5px; font-weight: 700; color: var(--muted); }
+
+/* ---- The device ---- */
+.phone {
+  width: 376px; height: 816px; padding: 8px; border-radius: 46px; background: #121214;
+  box-shadow: 0 0 0 1.5px #2c2c30, 0 24px 48px -12px rgba(20, 10, 40, .35);
+}
+.phone-screen {
+  width: 360px; height: 800px; border-radius: 38px; overflow: hidden; position: relative;
+  background: var(--surface); color: var(--on-surface);
+  font-family: Roboto, system-ui, sans-serif; -webkit-font-smoothing: antialiased; text-align: left;
+}
+.screen-host, .scr { height: 100%; }
+.scr { display: flex; flex-direction: column; position: relative; }
+.scr * { box-sizing: border-box; }
+/* Below the 28px status bar and above the 24px gesture bar: the web page has no app bar since 2026-10-31. */
+.web-layer { position: absolute; left: 0; right: 0; top: 28px; bottom: 24px; background: var(--surface); }
+.web-layer[hidden] { display: none; }
+.web-layer iframe { width: 100%; height: 100%; border: 0; background: #fff; }
+
+/* Android system bars. */
+.sb {
+  height: 28px; flex: none; padding: 0 22px; display: flex; align-items: center; justify-content: space-between;
+  font-size: 13px; font-weight: 500; position: relative; z-index: 5; color: var(--on-surface);
+}
+.sb::after {
+  content: ""; position: absolute; left: 50%; top: 8px; width: 11px; height: 11px; margin-left: -5.5px;
+  border-radius: 50%; background: #0b0b0d;
+}
+.sb-icons { display: inline-flex; gap: 3px; }
+.gb { height: 24px; flex: none; display: flex; align-items: center; justify-content: center; position: relative; z-index: 5; }
+.gb span { width: 108px; height: 4px; border-radius: 2px; background: var(--on-surface); opacity: .45; }
+
+/* ---- Layout helpers ---- */
+.safe { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; scrollbar-width: none; }
+.scroll::-webkit-scrollbar { display: none; }
+.col { display: flex; flex-direction: column; flex: none; }
+.spacer { flex: 1; }
+.center { text-align: center; }
+.ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+/* ---- Material 3 (2021) type scale, Roboto ---- */
+.dm { font-size: 36px; line-height: 44px; }
+.hm { font-size: 28px; line-height: 36px; }
+.hs { font-size: 24px; line-height: 32px; }
+.tl { font-size: 22px; line-height: 28px; }
+.tm { font-size: 16px; line-height: 24px; font-weight: 500; letter-spacing: .15px; }
+.bl { font-size: 16px; line-height: 24px; letter-spacing: .5px; }
+.bm { font-size: 14px; line-height: 20px; letter-spacing: .25px; }
+.bsm { font-size: 12px; line-height: 16px; letter-spacing: .4px; }
+.ll { font-size: 14px; line-height: 20px; font-weight: 500; letter-spacing: .1px; }
+.lm { font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: .5px; }
+.w7 { font-weight: 700; }
+.tab { font-variant-numeric: tabular-nums; }
+.osv { color: var(--on-surface-variant); }
+.primary { color: var(--primary); }
+.accent { color: var(--accent-color); }
+.gold { color: #f5a623; }
+
+/* ---- Brand ---- */
+.logo {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none;
+  overflow: hidden; background: var(--primary); align-self: flex-start;
+}
+.logo-letter { color: var(--on-primary); font-weight: 700; line-height: 1; }
+.logo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.bh { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.bh-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+/* ---- Buttons ---- */
+.btn { display: flex; align-items: center; justify-content: center; flex: none; padding: 0 24px; }
+.btn.stadium { border-radius: 999px; }
+.btn.filled { background: var(--primary); color: var(--on-primary); }
+.btn.tonal { background: var(--secondary-container); color: var(--on-secondary-container); }
+.btn.disabled {
+  background: color-mix(in srgb, var(--on-surface) 12%, transparent);
+  color: color-mix(in srgb, var(--on-surface) 38%, transparent);
+}
+.ibtn { width: 48px; height: 48px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.appbar { height: 56px; flex: none; display: flex; align-items: center; padding: 0 4px; min-width: 0; }
+.appbar > .ibtn:first-child { margin-left: 0; }
+
+/* ---- Sign-in ---- */
+.t-welcome { letter-spacing: -.3px; }
+.pfield {
+  display: flex; align-items: center; min-height: 64px; border-radius: 16px; flex: none;
+  background: var(--surface-container-highest);
+}
+.pfield.focused { box-shadow: inset 0 0 0 2px var(--primary); }
+.pfx { display: flex; align-items: center; padding: 0 12px 0 6px; }
+.pfx-ink { display: flex; align-items: center; padding: 10px; }
+.flag { font-size: 22px; line-height: 1; margin-right: 8px; }
+.pfx-div { width: 1px; height: 24px; background: var(--outline-variant); margin-left: 4px; }
+.digits { font-size: 22px; line-height: 28px; font-weight: 600; letter-spacing: 1.2px; font-variant-numeric: tabular-nums; }
+.digits.hint { color: color-mix(in srgb, var(--on-surface-variant) 45%, transparent); font-weight: 500; }
+
+.car {
+  flex: 1 1 0; min-height: 0; border-radius: 28px; display: flex; flex-direction: column;
+  background: linear-gradient(to bottom,
+    color-mix(in srgb, var(--primary) 7%, var(--surface)),
+    color-mix(in srgb, var(--primary) 16%, var(--surface)));
+}
+.car-title-box { padding: 18px 20px 0; flex: none; }
+/* The app's fixed 56px Center: two 22px lines at height 1.2 fit, more clip. */
+.car-title {
+  height: 56px; display: flex; align-items: center; justify-content: center; overflow: hidden;
+  line-height: 1.2; color: var(--primary); text-align: center; transition: opacity .125s;
+}
+.car-pages { flex: 1; min-height: 0; overflow: hidden; }
+.car-track { display: flex; height: 100%; transition: transform 450ms cubic-bezier(.65, 0, .35, 1); }
+.car-page { flex: 0 0 100%; height: 100%; padding: 14px 24px 0; display: flex; align-items: center; justify-content: center; }
+.shot { height: 100%; max-width: 100%; display: flex; align-items: center; justify-content: center; }
+.shot img {
+  max-width: 100%; max-height: 100%; display: block; border-radius: 18px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .18);
+}
+.shot-ph {
+  display: none; height: 100%; aspect-ratio: 9 / 19.5; max-width: 100%; border-radius: 18px;
+  background: var(--surface); border: 1px solid var(--outline-variant); align-items: center; justify-content: center;
+  color: color-mix(in srgb, var(--primary) 25%, transparent);
+}
+.shot.broken img { display: none; }
+.shot.broken .shot-ph { display: flex; }
+.car-dots { height: 40px; flex: none; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.car-dots .dot {
+  width: 7px; height: 7px; border-radius: 4px; background: color-mix(in srgb, var(--primary) 25%, transparent);
+  transition: width .25s ease-out, background-color .25s ease-out;
+}
+.car-dots .dot.on { width: 22px; background: var(--primary); }
+
+/* ---- Code entry ---- */
+.otp-row { display: flex; gap: 8px; flex: none; }
+.otp-box {
+  flex: 1; height: 58px; border-radius: 14px; background: var(--surface-container-highest);
+  box-shadow: inset 0 0 0 2px transparent;
+}
+.otp-box.focused { box-shadow: inset 0 0 0 2px var(--primary); }
+
+/* ---- Paywall ---- */
+.pw-head { padding: 16px 20px 0; flex: none; }
+.pw-scroll { padding: 20px 24px 24px; align-items: center; }
+.pw-scroll > * { max-width: 100%; }
+.pw-heading { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px 8px; text-align: center; }
+.pill-badge { background: var(--accent-color); color: var(--accent-on-color); border-radius: 999px; padding: 4px 12px; }
+.pw-rating { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px; }
+.stars { display: inline-flex; }
+.media {
+  width: 100%; border-radius: 20px; overflow: hidden; background: var(--surface-container-highest);
+  position: relative; flex: none;
+}
+.media img.cover, .media .poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.media.vid { width: auto; cursor: pointer; }
+.media.vid video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; opacity: 0; }
+.media.vid.ready video { opacity: 1; }
+.media.vid.ready .poster { display: none; }
+.spin {
+  position: absolute; left: 50%; top: 50%; width: 32px; height: 32px; margin: -16px 0 0 -16px;
+  border-radius: 50%; border: 3px solid var(--primary); border-right-color: transparent;
+  animation: pv-spin .9s linear infinite;
+}
+.media.vid.ready:not(.buffering) .spin { display: none; }
+.paused {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: none;
+  padding: 10px; border-radius: 50%; background: rgba(0, 0, 0, .6); color: #fff;
+}
+.media.vid.is-paused .paused { display: flex; }
+.media.vid.is-paused .spin { display: none; }
+.media.vid.failed video, .media.vid.failed .spin { display: none; }
+.media.vid.failed .poster { display: block; }
+.media.vid.failed[data-fallback="0"] { display: none; }
+/* Small phones show the poster still with a play mark, not a spinner forever. */
+.phone:not([data-live]) .media.vid .spin { display: none; }
+.phone:not([data-live]) .media.vid .paused { display: flex; }
+
+.feats { display: flex; align-items: flex-start; width: 100%; }
+.pw-feat { flex: 1 1 0; min-width: 0; padding: 0 4px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+.feat-circle {
+  width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: var(--accent-container); color: var(--accent-on-container);
+}
+.ic-img { object-fit: contain; display: block; }
+.ic-fallback { display: none !important; }
+.ic-img.bad { display: none; }
+.ic-img.bad + .ic-fallback { display: inline-block !important; }
+
+.pw-price { display: flex; align-items: center; justify-content: center; }
+.strike { text-decoration: line-through; text-decoration-color: var(--on-surface-variant); }
+
+.social {
+  width: 100%; display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-radius: 999px;
+  background: var(--surface-container-high);
+}
+.social-text {
+  flex: 1; min-width: 0; color: var(--on-surface); transition: opacity .125s;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+}
+
+.pw-bar {
+  flex: none; display: flex; align-items: center; padding: 10px 20px 10px 12px;
+  border-top: 1px solid var(--outline-variant);
+}
+.upi-pick { flex: 1; min-width: 0; display: flex; align-items: center; padding: 12px 8px; color: var(--on-surface); }
+.cta { height: 52px; min-width: 132px; padding: 0 28px; margin-left: 12px; max-width: 60%; }
+
+/* UPI sheet over the paywall. */
+.scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, .54); z-index: 3; }
+.sheet {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 4; padding: 0 8px 24px;
+  background: var(--surface-container-low); border-radius: 28px 28px 0 0;
+}
+.handle { height: 48px; display: flex; align-items: center; justify-content: center; }
+.handle span { width: 32px; height: 4px; border-radius: 2px; background: var(--on-surface-variant); opacity: .4; }
+.tile { height: 56px; display: flex; align-items: center; gap: 16px; padding: 0 24px 0 16px; }
+.avatar {
+  width: 40px; height: 40px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center;
+  background: var(--primary-container); color: var(--on-primary-container);
+}
+.tile-title { flex: 1; min-width: 0; }
+
+/* Processing. */
+.proc { justify-content: center; align-items: center; padding: 0 32px; }
+.proc-ring { position: relative; width: 104px; height: 104px; display: flex; align-items: center; justify-content: center; flex: none; }
+.proc-ring .logo { align-self: center; }
+.ring { position: absolute; inset: 0; animation: pv-spin 1.4s linear infinite; }
+.ring circle {
+  fill: none; stroke: var(--primary); stroke-width: 4; stroke-linecap: square;
+  stroke-dasharray: 220 400; animation: pv-dash 1.4s ease-in-out infinite;
+}
+
+/* Web page. */
+.web-slot { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: var(--surface-container-low); }
+.web-card { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding: 24px; max-width: 100%; overflow-wrap: anywhere; }
+.nopage { justify-content: center; align-items: center; }
+.np-circle {
+  width: 132px; height: 132px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center;
+  background: var(--primary-container); color: var(--on-primary-container);
+}
+
+/* ---- What the focused field controls ---- */
+.phone-screen [data-part].hl { outline: 2px dashed #ff8a00; outline-offset: 3px; border-radius: 6px; }
+.phone-screen .logo.hl, .phone-screen .feat-circle.hl { border-radius: inherit; }
+.phone-screen [data-part].pulse { animation: pv-pulse 1.1s ease-out 1; }
+.ghost {
+  width: 100%; flex: none; border: 1.5px dashed #ff8a00; border-radius: 12px; padding: 10px 12px;
+  background: rgba(255, 138, 0, .08); color: #c25e00; font-size: 12px; font-weight: 600; text-align: center;
+}
+.scroll > .ghost { margin-top: 12px; }
+
+@keyframes pv-spin { to { transform: rotate(360deg); } }
+@keyframes pv-dash {
+  0% { stroke-dasharray: 2 400; stroke-dashoffset: 0; }
+  50% { stroke-dasharray: 220 400; stroke-dashoffset: -40; }
+  100% { stroke-dasharray: 2 400; stroke-dashoffset: -312; }
+}
+@keyframes pv-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(255, 138, 0, .65); }
+  100% { box-shadow: 0 0 0 14px rgba(255, 138, 0, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .car-track, .dot, .car-title, .social-text { transition: none; }
+  .phone-screen [data-part].pulse { animation: none; }
+}

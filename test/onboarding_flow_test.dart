@@ -29,14 +29,6 @@ Future<OnboardingState> _savedState() async {
 
 Future<OnboardingStage> _savedStage() async => (await _savedState()).stage;
 
-/// Log out is in the web screen's menu.
-Future<void> _logOut(WidgetTester tester) async {
-  await tester.tap(find.byTooltip('More'));
-  await tester.pumpAndSettle();
-  await tester.tap(find.text('Log out'));
-  await tester.pumpAndSettle();
-}
-
 /// The review account's notes screen: log out lives on the Profile screen.
 Future<void> _logOutNotes(WidgetTester tester) async {
   await tester.tap(find.bySemanticsIdentifier('notes_profile_button'));
@@ -608,9 +600,9 @@ void main() {
       expect(find.text('Zed'), findsOneWidget);
       expect(find.text('7-Day'), findsOneWidget);
       expect(find.text('Pass'), findsOneWidget);
-      // The pill and the large price.
+      // The pill and the large price; no struck-through monthly price.
       expect(find.text('₹5'), findsNWidgets(2));
-      expect(find.text('₹499'), findsOneWidget);
+      expect(find.text('₹499'), findsNothing);
       expect(find.text('Alpha'), findsOneWidget);
       expect(find.text('Beta'), findsOneWidget);
       expect(find.text('4.6'), findsOneWidget);
@@ -730,6 +722,19 @@ void main() {
       expect(find.byIcon(Icons.star_rounded), findsNothing);
       expect(find.byIcon(Icons.auto_awesome), findsNothing);
       expect(find.text('₹3'), findsNWidgets(2));
+      // The struck-through monthly price is off unless the backend turns it on.
+      expect(find.text('₹299'), findsNothing);
+    });
+
+    testWidgets('the backend can turn the struck-through price back on',
+        (tester) async {
+      await launch(
+        tester,
+        setup: (FakeBackend b) => b.config = <String, String>{
+          'paywall_show_strike_price': 'true',
+        },
+      );
+      await signIn(tester);
       expect(find.text('₹299'), findsOneWidget);
     });
 
@@ -926,18 +931,22 @@ void main() {
       expect(find.text('Log out'), findsNothing);
     });
 
-    testWidgets('Log out on the web page returns to the number',
+    testWidgets('the web page is full screen: no app bar, Log out or Reload',
         (tester) async {
-      final Harness h = await launch(tester);
+      await launch(
+        tester,
+        setup: (FakeBackend b) => b.config = <String, String>{
+          'webview_url': 'https://app.example.com/',
+        },
+      );
       await signIn(tester);
       await tapTryNow(tester);
 
-      await _logOut(tester);
-
-      expect(find.text(_phoneScreen), findsOneWidget);
-      expect(h.backend.signOuts, 1);
-      expect(h.backend.isSignedIn, isFalse);
-      expect(await _savedStage(), OnboardingStage.signIn);
+      expect(find.bySemanticsIdentifier('web_screen'), findsOneWidget);
+      expect(find.byType(AppBar), findsNothing);
+      expect(find.text('Log out'), findsNothing);
+      expect(find.byTooltip('Reload'), findsNothing);
+      expect(find.byTooltip('More'), findsNothing);
     });
   });
 
@@ -978,7 +987,7 @@ void main() {
       // No WebView exists in a widget test; on a phone the page shows here.
       expect(find.text('This page cannot be shown on this device.'),
           findsOneWidget);
-      expect(find.byTooltip('Reload'), findsOneWidget);
+      expect(find.byType(AppBar), findsNothing);
     });
 
     testWidgets('a URL that is not https is not loaded', (tester) async {
@@ -1016,7 +1025,7 @@ void main() {
       expect(prefs.getString('evos_config_v1'),
           contains('filmyface.example.com'));
       // The source is on the view event so a misroute is visible in Mixpanel.
-      expect(h.recorder.properties('Web Page Viewed')['install_source'],
+      expect(h.recorder.properties('Web Page Viewed')['config_source'],
           'filmyface');
     });
 

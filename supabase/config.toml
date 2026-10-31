@@ -14,3 +14,8 @@ verify_jwt = false
 # check runs.
 [functions.admin-source-config]
 verify_jwt = false
+
+# The app calls this on first launch, before sign-in, with the publishable key (not a JWT).
+# It stores nothing and returns only the decoded ad of the referrer it was sent.
+[functions.meta-install-referrer]
+verify_jwt = false

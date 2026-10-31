@@ -8,13 +8,15 @@ import 'package:webview_flutter_android/webview_flutter_android.dart';
 
 import '../../models/remote_config.dart';
 import '../../providers.dart';
-import '../../widgets/brand.dart';
 
 /// Where a subscriber, and the store-review account, lands: the web page in
 /// the backend's `webview_url` row.
 ///
 /// The URL is read from the settings, so it can change without an app update.
 /// With no URL set there is a "come back soon" screen instead.
+///
+/// Full screen, with no app bar (owner's decision, 2026-10-31): there is no
+/// Reload (a failed load shows "Try again") and no Log out here.
 class WebScreen extends ConsumerStatefulWidget {
   const WebScreen({super.key});
 
@@ -23,7 +25,6 @@ class WebScreen extends ConsumerStatefulWidget {
 }
 
 class _WebScreenState extends ConsumerState<WebScreen> {
-  final GlobalKey<_WebPageState> _page = GlobalKey<_WebPageState>();
   late final AppLifecycleListener _lifecycle;
   bool _checking = false;
 
@@ -72,39 +73,14 @@ class _WebScreenState extends ConsumerState<WebScreen> {
     return Semantics(
       identifier: 'web_screen',
       child: Scaffold(
-        appBar: AppBar(
-          titleSpacing: 16,
-          title: const BrandHeader(),
-          actions: <Widget>[
-            if (url != null)
-              IconButton(
-                tooltip: 'Reload',
-                icon: const Icon(Icons.refresh_rounded),
-                onPressed: () => _page.currentState?.reload(),
-              ),
-            Semantics(
-              identifier: 'web_menu_button',
-              child: PopupMenuButton<void>(
-                tooltip: 'More',
-                itemBuilder: (BuildContext context) => <PopupMenuEntry<void>>[
-                  PopupMenuItem<void>(
-                    onTap: () => ref
-                        .read(onboardingControllerProvider.notifier)
-                        .signOut(),
-                    child: Semantics(
-                      identifier: 'web_logout_button',
-                      child: const Text('Log out'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+        // Keeps the page clear of the status bar and gesture area, now that
+        // no app bar does.
+        body: SafeArea(
+          child: url == null
+              ? _NoPage(checking: _checking, onCheckAgain: _checkAgain)
+              // Keyed by the URL, so a new one from the backend starts afresh.
+              : _WebPage(key: ValueKey<String>(url), url: url),
         ),
-        body: url == null
-            ? _NoPage(checking: _checking, onCheckAgain: _checkAgain)
-            // Keyed by the URL, so a new one from the backend starts afresh.
-            : _WebPage(key: _page, url: url),
       ),
     );
   }

@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart'
     show TargetPlatform, debugPrint, defaultTargetPlatform, kDebugMode, kIsWeb;
 import 'package:flutter/services.dart';
 
-import '../models/install_source.dart';
+import '../models/attribution.dart';
 
 /// Carries analytics calls to the native SDKs. The seam tests replace to see
 /// what would have been sent.
@@ -65,33 +65,56 @@ class Analytics {
 
   // ---- Install and links ----
 
-  /// Once per install, when Google Play has said where it came from. Also
-  /// puts the source on every later event and on the person's profile.
+  /// Puts [latest] on every later event (super properties) and on the
+  /// person (`people.set`), and [first] on the person once (`first_*` and
+  /// `install_source`, `people.setOnce`). Native code keeps both, so they
+  /// survive a sign-out's reset.
+  void registerAttribution({
+    required Attribution latest,
+    required Attribution first,
+  }) =>
+      _client.send('setAttribution', <String, Object?>{
+        'latest': latest.toProperties(),
+        'first': <String, Object>{
+          ...first.toFirstTouchProperties(),
+          'install_source': first.installSource,
+        },
+      });
+
+  /// Once per install, when Google Play's answer is final.
   ///
   /// [referrer] is Play's answer exactly as received, cut to 100 characters:
-  /// link parameters only, and the one way to see what Play really sent.
+  /// the one way to see what Play really sent. (Meta's encrypted ad is far
+  /// longer; the backend is sent all of it, never this copy.)
   /// [clickRecorded] is false when Play recorded no tap on a link. [attempt]
-  /// counts the launches that have asked, from 1; an empty answer is asked
-  /// for again, so one install can send this more than once.
+  /// counts the launches that asked before the answer was final, from 1.
   void installAttributed(
-    InstallSource source, {
+    Attribution attribution, {
     required String referrer,
     required bool clickRecorded,
     required int attempt,
-  }) {
-    final Map<String, Object> properties = source.toProperties();
-    _client.send('setInstallSource', <String, Object?>{
-      'properties': properties,
-    });
-    _track('Install Attributed', <String, Object>{
-      ...properties,
-      'install_referrer_raw': referrer.length > 100
-          ? referrer.substring(0, 100)
-          : referrer,
-      'referrer_click_recorded': clickRecorded,
-      'referrer_attempt': attempt,
-    });
-  }
+  }) =>
+      _track('Install Attributed', <String, Object>{
+        ...attribution.toProperties(),
+        'install_referrer_raw': referrer.length > 100
+            ? referrer.substring(0, 100)
+            : referrer,
+        'referrer_click_recorded': clickRecorded,
+        'referrer_attempt': attempt,
+        'has_gclid': attribution.gclid != null,
+      });
+
+  /// Once per Meta ad click, when the backend has decoded the ad.
+  /// [newInstall] is false for an install made by an older version, decoded
+  /// after the update.
+  void metaAdAttributed(MetaAd ad, {required bool newInstall}) =>
+      _track('Meta Ad Attributed', <String, Object>{
+        ...Attribution.fromMetaAd(ad).toProperties(),
+        'publisher_platform': ?ad.publisherPlatform,
+        'platform_position': ?ad.platformPosition,
+        'is_instagram': ?ad.isInstagram,
+        'is_new_install': newInstall,
+      });
 
   /// An onboarding link reached the app. [afterInstall]: it was a Play Store
   /// link followed before the app was installed. For attribution only: since
@@ -223,12 +246,14 @@ class Analytics {
     <String, Object>{'plan_id': planId, 'reason': reason},
   );
 
-  /// The subscriber's web page was shown. [hasUrl] is false when the backend
-  /// has no `webview_url`, and a "come back soon" screen showed instead.
-  /// The web page screen opened. [source] is the install's attributed source
+  /// The web page screen opened. [hasUrl] is false when the backend has no
+  /// `webview_url`, and a "come back soon" screen showed instead. [source] is
+  /// the per-source settings key (`install_source_v1`, the raw `utm_source`)
   /// and [webHost] the host of the page actually loaded (never the full URL):
   /// together they make a misrouted source — landing on the wrong page, or on
-  /// none — visible in Mixpanel instead of failing silently.
+  /// none — visible in Mixpanel instead of failing silently. Sent as
+  /// `config_source`, because `install_source` is the attribution super
+  /// property.
   void webPageViewed({
     required bool hasUrl,
     String? source,
@@ -236,7 +261,7 @@ class Analytics {
   }) =>
       _track('Web Page Viewed', <String, Object>{
         'has_url': hasUrl,
-        if (source != null && source.isNotEmpty) 'install_source': source,
+        if (source != null && source.isNotEmpty) 'config_source': source,
         if (webHost != null && webHost.isNotEmpty) 'web_host': webHost,
       });
 

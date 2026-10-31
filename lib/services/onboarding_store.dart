@@ -1,5 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/attribution.dart';
 import '../models/onboarding.dart';
 
 /// The only file in the app that imports `shared_preferences`.
@@ -81,4 +82,54 @@ class OnboardingStore {
 
   Future<void> saveInstallSource(String source) =>
       _prefs.setString(_installSourceKey, source);
+
+  // ---- Attribution (see AttributionService) ----
+
+  static const String _latestAttributionKey = 'attribution_latest_v1';
+  static const String _firstAttributionKey = 'attribution_first_v1';
+  static const String _syncedAttributionKey = 'attribution_synced_v1';
+  static const String _installAttributedKey = 'attribution_install_here_v1';
+  static const String _metaSettledKey = 'meta_referrer_settled_v1';
+  static const String _metaAttemptsKey = 'meta_referrer_attempts_v1';
+
+  /// The latest ad (last touch): what every event and the profile carry.
+  Attribution? get latestAttribution =>
+      Attribution.decode(_prefs.getString(_latestAttributionKey));
+
+  Future<void> saveLatestAttribution(Attribution attribution) =>
+      _prefs.setString(_latestAttributionKey, attribution.encode());
+
+  /// The first ad this install ever had (first touch).
+  Attribution? get firstAttribution =>
+      Attribution.decode(_prefs.getString(_firstAttributionKey));
+
+  Future<void> saveFirstAttribution(Attribution attribution) =>
+      _prefs.setString(_firstAttributionKey, attribution.encode());
+
+  /// The encoded attribution last saved on the server, so it is sent again
+  /// only when it changes or the last try failed.
+  String? get syncedAttribution => _prefs.getString(_syncedAttributionKey);
+
+  Future<void> saveSyncedAttribution(String encoded) =>
+      _prefs.setString(_syncedAttributionKey, encoded);
+
+  /// True when this install's `Install Attributed` was sent by a version with
+  /// this code; false for an install made by an older version and updated.
+  bool get installAttributedHere =>
+      _prefs.getBool(_installAttributedKey) ?? false;
+
+  Future<void> markInstallAttributedHere() =>
+      _prefs.setBool(_installAttributedKey, true);
+
+  /// The Meta ad decode is finished for this install: decoded, refused, not
+  /// a Meta ad, or out of attempts.
+  bool get metaReferrerSettled => _prefs.getBool(_metaSettledKey) ?? false;
+
+  Future<void> settleMetaReferrer() => _prefs.setBool(_metaSettledKey, true);
+
+  /// Launches that asked the backend (or Play) and got no answer.
+  int get metaReferrerAttempts => _prefs.getInt(_metaAttemptsKey) ?? 0;
+
+  Future<void> saveMetaReferrerAttempts(int attempts) =>
+      _prefs.setInt(_metaAttemptsKey, attempts);
 }

@@ -16,7 +16,6 @@ flowchart TD
     Otp -- code verified, subscribed --> Web[WebScreen]
     Otp -- review number 9931133385 + 123456 --> Notes[NotesListScreen, local]
     Paywall -- server confirms the mandate --> Web
-    Web -- Log out --> Phone
     Web -- subscription ended --> Paywall
     Notes -- Log out --> Phone
 ```

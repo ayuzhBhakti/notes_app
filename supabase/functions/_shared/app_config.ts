@@ -22,6 +22,8 @@ export interface ResolvedAppConfig {
   cashfreePlanId: string;
   planName: string;
   customerEmailDomain: string;
+  /** Mixpanel project token for server events (private row mixpanel_token). Empty: none sent. */
+  mixpanelToken: string;
 }
 
 export function createServiceClient(): SupabaseClient {
@@ -149,5 +151,6 @@ export async function loadAppConfig(
     cashfreePlanId: resolve(map, "cashfree_plan_id"),
     planName: resolve(map, "plan_name") || `${appName} Premium Monthly`,
     customerEmailDomain: resolve(map, "customer_email_domain"),
+    mixpanelToken: resolve(map, "mixpanel_token"),
   };
 }

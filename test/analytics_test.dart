@@ -1,5 +1,8 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:evos/models/attribution.dart';
 import 'package:evos/models/install_source.dart';
+import 'package:evos/models/review_account.dart';
 import 'package:evos/services/analytics.dart';
 import 'package:evos/services/evos_backend.dart';
 import 'package:evos/services/payment_gateway.dart';
@@ -11,11 +14,9 @@ void main() {
   group('InstallSource.parse', () {
     test('no referrer is an organic install from an unknown source', () {
       for (final String? referrer in <String?>[null, '', '   ']) {
-        expect(InstallSource.parse(referrer).toProperties(), <String, Object>{
-          'install_source': 'unknown',
-          'install_medium': 'organic',
-          'install_organic': true,
-        });
+        final InstallSource source = InstallSource.parse(referrer);
+        expect(source.source, 'unknown');
+        expect(source.isOrganic, isTrue);
       }
     });
 
@@ -30,21 +31,17 @@ void main() {
       final InstallSource source = InstallSource.parse(
         'utm_source=whatsapp&utm_campaign=diwali&flow=onboarding',
       );
-      expect(source.toProperties(), <String, Object>{
-        'install_source': 'whatsapp',
-        'install_medium': 'link',
-        'install_organic': false,
-        'install_campaign': 'diwali',
-      });
+      expect(source.source, 'whatsapp');
+      expect(source.medium, 'link');
+      expect(source.isOrganic, isFalse);
+      expect(source.campaign, 'diwali');
     });
 
     test('a Google Ads click is paid, and the click id is not kept', () {
       final InstallSource source = InstallSource.parse('gclid=abc123');
-      expect(source.toProperties(), <String, Object>{
-        'install_source': 'google-ads',
-        'install_medium': 'cpc',
-        'install_organic': false,
-      });
+      expect(source.source, 'google-ads');
+      expect(source.medium, 'cpc');
+      expect(source.isOrganic, isFalse);
     });
 
     test('reads a referrer handed over still encoded', () {
@@ -73,6 +70,28 @@ void main() {
   });
 
   group('Analytics', () {
+    test('registerAttribution sends the latest ad, and the first touch with '
+        'install_source', () {
+      final Recorder recorder = Recorder();
+      Analytics(recorder).registerAttribution(
+        latest: Attribution.fromReferrer('utm_source=yt&utm_content=v2'),
+        first: Attribution.fromReferrer('gclid=abc'),
+      );
+      expect(recorder.otherMethods, <String>['setAttribution']);
+      expect(recorder.calls.single.$2, <String, Object?>{
+        'latest': <String, Object>{
+          'install_source': 'other',
+          'utm_source': 'yt',
+          'utm_content': 'v2',
+        },
+        'first': <String, Object>{
+          'first_utm_source': 'google',
+          'first_utm_medium': 'paid',
+          'install_source': 'google_ads',
+        },
+      });
+    });
+
     test('a simulated purchase is never reported to Meta as revenue', () {
       final Recorder recorder = Recorder();
       Analytics(recorder).subscriptionSucceeded(
@@ -135,18 +154,19 @@ void main() {
       );
     });
 
-    test('an install source is stored and reported', () {
+    test('an install is reported with its attribution', () {
       final Recorder recorder = Recorder();
       Analytics(recorder).installAttributed(
-        InstallSource.parse('utm_source=mail'),
+        Attribution.fromReferrer('utm_source=mail'),
         referrer: 'utm_source=mail',
         clickRecorded: true,
         attempt: 1,
       );
-      expect(recorder.otherMethods, <String>['setInstallSource']);
       final Map<String, Object?> properties =
           recorder.properties('Install Attributed');
-      expect(properties['install_source'], 'mail');
+      expect(properties['install_source'], 'other');
+      expect(properties['utm_source'], 'mail');
+      expect(properties['has_gclid'], false);
       expect(properties['install_referrer_raw'], 'utm_source=mail');
       expect(properties['referrer_click_recorded'], true);
       expect(properties['referrer_attempt'], 1);
@@ -156,7 +176,7 @@ void main() {
       final Recorder recorder = Recorder();
       final String long = 'utm_source=${'x' * 300}';
       Analytics(recorder).installAttributed(
-        InstallSource.parse(long),
+        Attribution.fromReferrer(long),
         referrer: long,
         clickRecorded: false,
         attempt: 2,
@@ -382,14 +402,18 @@ void main() {
       expect(h.recorder.otherMethods, isNot(contains('metaSubscribe')));
     });
 
+    // The web page has no Log out since 2026-10-31; the review account's
+    // Profile screen goes through the same sign-out.
     testWidgets('logging out is tracked, then the identity is reset',
         (tester) async {
-      final Harness h = await launch(tester, coldStartLink: onboardingLink);
-      await signIn(tester);
-      await tapTryNow(tester);
-      await tester.tap(find.byTooltip('More'));
+      final Harness h = await launch(tester);
+      await sendCode(tester, kReviewPhone);
+      await enterCode(tester, kReviewCode);
+      await tester.tap(find.bySemanticsIdentifier('notes_profile_button'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Log out'));
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Log out'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Log out'));
       await tester.pumpAndSettle();
 
       expect(h.recorder.events, containsAllInOrder(<String>[

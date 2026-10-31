@@ -7,6 +7,7 @@ import {
   resolvePlanType,
 } from "../_shared/subscription.ts";
 import { logPayment, logPaymentError } from "../_shared/logger.ts";
+import { paymentTypeFor, previousPaymentStatus, trackUserEvent } from "../_shared/mixpanel.ts";
 
 const FN = "verify-cashfree-subscription";
 
@@ -59,7 +60,7 @@ function createUserClient(authHeader: string) {
   );
 }
 
-function isAuthorizationSuccess(status: string | undefined): boolean {
+function isAuthorizationSuccess(status: string | null | undefined): boolean {
   if (!status) return false;
   const normalized = status.toUpperCase();
   return normalized === "SUCCESS" || normalized === "ACTIVE";
@@ -189,16 +190,40 @@ Deno.serve(async (req) => {
         paymentType: payment.payment_type,
       });
 
-      await recordSubscriptionPayment(serviceClient, {
+      const paymentId = paymentIdFor(payment, `${subscriptionId}:${planType}`);
+      const previousStatus = await previousPaymentStatus(
+        serviceClient,
+        cashfree.subscription_id,
+        paymentId,
+      );
+      const { inserted } = await recordSubscriptionPayment(serviceClient, {
         userId: user.id,
         phone,
-        paymentId: paymentIdFor(payment, `${subscriptionId}:${planType}`),
+        paymentId,
         cashfreeSubscriptionId: cashfree.subscription_id,
         amount: resolvedAmount,
         planType,
         status: "success",
         paidAt: payment.payment_time ?? null,
       });
+      // The webhook may have recorded (and sent) this payment already.
+      if (inserted) {
+        const paidAt = Date.parse(payment.payment_time ?? "");
+        await trackUserEvent(serviceClient, config.mixpanelToken, {
+          fn: FN,
+          event: "Payment Succeeded",
+          userId: user.id,
+          insertId: paymentId,
+          time: Number.isFinite(paidAt) ? Math.floor(paidAt / 1000) : undefined,
+          properties: {
+            payment_type: paymentTypeFor(planType, previousStatus),
+            plan_type: planType,
+            amount: resolvedAmount,
+            currency: "INR",
+            via: "verify",
+          },
+        });
+      }
     }
 
     const { data: refreshedProfile } = await serviceClient

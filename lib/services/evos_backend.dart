@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:supabase/supabase.dart';
 
+import '../models/attribution.dart';
 import 'onboarding_store.dart';
 
 /// Why a call to the backend did not succeed. Deliberately few: each is
@@ -104,6 +105,15 @@ abstract class EvosBackend {
 
   /// True once Cashfree reports the mandate authorised.
   Future<bool> verifySubscription(String subscriptionId);
+
+  /// Asks the meta-install-referrer function which Meta ad [referrer] came
+  /// from. [referrer] must be Play's whole answer: a cut copy loses the nonce
+  /// and cannot be decrypted. Never throws; see [MetaDecodeStatus].
+  Future<MetaDecodeResult> decodeMetaReferrer(String referrer);
+
+  /// Saves [attribution] on the signed-in user's profile, through the
+  /// `save_user_attribution` RPC (the app cannot write those columns itself).
+  Future<void> saveAttribution(Attribution attribution);
 }
 
 /// The only file in the app that imports `supabase`.
@@ -250,10 +260,17 @@ class SupabaseEvosBackend implements EvosBackend {
   /// 'true'/'false', numbers as text), so a non-string column is stringified.
   /// A null column inherits the global value; an empty string is kept, because
   /// it is a deliberate override that hides that part of the screen.
+  ///
+  /// Except the login slides ([_sourceOnlyColumns]): a source shows only its
+  /// own, and with none set it shows no carousel rather than the global one
+  /// (owner's decision, 2026-10-31).
   static void mergeSourceRow(
     Map<String, String> config,
     Map<String, dynamic> row,
   ) {
+    for (final String key in _sourceOnlyColumns) {
+      config[key] = '';
+    }
     for (final MapEntry<String, dynamic> entry in row.entries) {
       if (_sourceMetaColumns.contains(entry.key)) continue;
       final Object? value = entry.value;
@@ -261,6 +278,12 @@ class SupabaseEvosBackend implements EvosBackend {
       config[entry.key] = value is String ? value : value.toString();
     }
   }
+
+  /// Settings a matched source never inherits from `app_config`.
+  static const Set<String> _sourceOnlyColumns = <String>{
+    'login_slide_images',
+    'login_slide_titles',
+  };
 
   @override
   Future<bool> hasActiveSubscription() => _guard(() async {
@@ -309,6 +332,53 @@ class SupabaseEvosBackend implements EvosBackend {
         final Object? data = response.data;
         if (data is! Map) return false;
         return data['mandate_success'] == true || data['is_active'] == true;
+      });
+
+  @override
+  Future<MetaDecodeResult> decodeMetaReferrer(String referrer) async {
+    try {
+      final FunctionResponse response = await _client.functions
+          .invoke(
+            'meta-install-referrer',
+            body: <String, Object?>{'referrer': referrer},
+          )
+          .timeout(_timeout);
+      final Object? data = response.data;
+      if (data is! Map) {
+        return const MetaDecodeResult(MetaDecodeStatus.retryLater);
+      }
+      final MetaAd? ad = MetaAd.fromJson(data['ad']);
+      return ad == null
+          ? const MetaDecodeResult(MetaDecodeStatus.notMeta)
+          : MetaDecodeResult.decoded(ad);
+    } on FunctionException catch (error) {
+      return MetaDecodeResult(_metaStatusFor(error.status));
+    } catch (error) {
+      // Offline, DNS, TLS or a timeout: worth another try.
+      if (kDebugMode) debugPrint('[evos] Meta referrer not decoded: $error');
+      return const MetaDecodeResult(MetaDecodeStatus.retryLater);
+    }
+  }
+
+  /// A 4xx is the function's final word on the referrer, except the ones that
+  /// describe the deployment rather than the referrer: not deployed yet (404),
+  /// the gateway refusing the key (401, 403), or a rate limit (408, 429).
+  /// Giving up on those would lose installs made before the function is live.
+  static MetaDecodeStatus _metaStatusFor(int status) {
+    const Set<int> deployment = <int>{401, 403, 404, 408, 429};
+    if (status >= 400 && status < 500 && !deployment.contains(status)) {
+      return MetaDecodeStatus.rejected;
+    }
+    return MetaDecodeStatus.retryLater;
+  }
+
+  @override
+  Future<void> saveAttribution(Attribution attribution) => _guard(() async {
+        await _ensureSession();
+        await _client.rpc<void>(
+          'save_user_attribution',
+          params: attribution.toRpcParams(),
+        );
       });
 
   Future<void> dispose() async {
@@ -450,5 +520,14 @@ class UnconfiguredEvosBackend implements EvosBackend {
 
   @override
   Future<bool> verifySubscription(String subscriptionId) async =>
+      throw _failure;
+
+  /// Test mode has no backend to decrypt with.
+  @override
+  Future<MetaDecodeResult> decodeMetaReferrer(String referrer) async =>
+      const MetaDecodeResult(MetaDecodeStatus.rejected);
+
+  @override
+  Future<void> saveAttribution(Attribution attribution) async =>
       throw _failure;
 }

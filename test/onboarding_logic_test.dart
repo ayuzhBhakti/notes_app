@@ -331,7 +331,7 @@ void main() {
       expect(config.videoAspectRatio, 1);
       expect(config.paywallSubtitle, isEmpty);
       expect(config.featureIcon(0), isEmpty);
-      expect(config.showStrikePrice, isTrue);
+      expect(config.showStrikePrice, isFalse);
       expect(config.accentColor, isNull);
       expect(config.socialProofIcon, isEmpty);
       expect(config.ctaText, 'Try Now');
@@ -400,13 +400,13 @@ void main() {
       expect(config.ctaText, 'Try Now');
       expect(config.upiSelectText, 'Select UPI App');
       expect(config.accentColor, isNull);
-      expect(config.showStrikePrice, isTrue);
+      expect(config.showStrikePrice, isFalse);
       expect(
         read(<String, String>{
-          'paywall_show_strike_price': 'false',
+          'paywall_show_strike_price': 'true',
           'paywall_accent_color': '#E11D48',
         }).showStrikePrice,
-        isFalse,
+        isTrue,
       );
     });
   });
@@ -458,6 +458,35 @@ void main() {
         'paywall_subtitle': '', // hide it for this source
       });
       expect(config['paywall_subtitle'], '');
+    });
+
+    test('a source without its own login slides shows no carousel, '
+        'never the global slides', () {
+      final Map<String, String> config = global()
+        ..['login_slide_images'] = 'https://cdn.example.com/global.png'
+        ..['login_slide_titles'] = 'Global slide';
+      SupabaseEvosBackend.mergeSourceRow(config, <String, dynamic>{
+        'source': 'partner',
+        'app_name': 'Partner',
+        'login_slide_images': null,
+        'login_slide_titles': null,
+      });
+      expect(config['login_slide_images'], '');
+      expect(config['login_slide_titles'], '');
+      expect(RemoteConfig.fromRows(config).loginSlides, isEmpty);
+    });
+
+    test('a source with its own login slides shows them', () {
+      final Map<String, String> config = global()
+        ..['login_slide_images'] = 'https://cdn.example.com/global.png';
+      SupabaseEvosBackend.mergeSourceRow(config, <String, dynamic>{
+        'source': 'partner',
+        'login_slide_images': 'https://cdn.example.com/partner.png',
+        'login_slide_titles': 'Partner slide',
+      });
+      expect(config['login_slide_images'], 'https://cdn.example.com/partner.png');
+      expect(config['login_slide_titles'], 'Partner slide');
+      expect(RemoteConfig.fromRows(config).loginSlides, hasLength(1));
     });
 
     test('meta columns and non-string values are handled', () {

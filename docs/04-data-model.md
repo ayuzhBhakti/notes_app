@@ -6,8 +6,9 @@ Deep-link onboarding keeps its data elsewhere:
 
 | Data | Where |
 |------|-------|
-| Stage, phone sign-in session, last fetched settings | On the device, in `shared_preferences` |
+| Stage, phone sign-in session, last fetched settings, install attribution | On the device, in `shared_preferences` |
 | Accounts, subscription status, payment log, settings | Supabase: `auth.users`, `profiles`, `subscription_payments`, `app_config` |
+| Which ad each user came from (latest ad) | Supabase: `profiles` columns `install_source`, `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, `campaign_id`, `adset_id`, `ad_id`, `gclid`, `attributed_at`. Written only by the RPC `save_user_attribution` (migration `20261031120000`, pushed 2026-10-31) |
 
 The tables and their policies are in [supabase/migrations/](../supabase/migrations/20261013120000_evos_init.sql) and described in [09-deep-link-onboarding.md](09-deep-link-onboarding.md#backend). They have not been applied to any project yet.
 

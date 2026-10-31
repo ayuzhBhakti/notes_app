@@ -50,16 +50,20 @@ class AnalyticsChannel private constructor(private val application: Application)
             identify(call.argument<String>("id")!!)
             call.argument<String>("name")?.takeIf { it.isNotBlank() }?.let { people.set("\$name", it) }
             call.argument<String>("email")?.takeIf { it.isNotBlank() }?.let { people.set("\$email", it) }
-            MixpanelSdk.applyInstallSource(application)
+            MixpanelSdk.applyAttribution(application)
         }
         "reset" -> mixpanel {
             reset()
             // The reset wipes Mixpanel's stored properties; where the install came from still holds.
-            MixpanelSdk.applyInstallSource(application)
+            MixpanelSdk.applyAttribution(application)
         }
-        "setInstallSource" -> {
-            // Stored even without a Mixpanel key: Play is asked only once, on first launch.
-            MixpanelSdk.saveInstallSource(application, call.argument<Map<String, Any?>>("properties")!!)
+        "setAttribution" -> {
+            // Stored even without a Mixpanel key: Play is asked only once per install.
+            MixpanelSdk.saveAttribution(
+                application,
+                call.argument<Map<String, Any?>>("latest")!!,
+                call.argument<Map<String, Any?>>("first")!!,
+            )
             MixpanelSdk.instance() != null
         }
         "metaCompleteRegistration" -> meta {
