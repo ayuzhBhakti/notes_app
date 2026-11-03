@@ -142,13 +142,14 @@ The server sends these because the app is often closed when they happen (for exa
 
 ### Facebook (Meta) events
 
-The app also tells Facebook about three moments, so Meta ads can optimise:
+The app and the backend together tell Facebook about four moments, so Meta ads can optimise. The ₹3 trial and the ₹299 monthly debit are reported separately, so the trial is never double-counted as purchase revenue:
 
-| Facebook event | When |
-|---|---|
-| Complete registration | A new account signed in for the first time |
-| Initiated checkout | "Try Now" was tapped |
-| Purchase + Subscribe | A real (not test) trial payment succeeded |
+| Facebook event | Sent by | When |
+|---|---|---|
+| Complete registration | App | A new account signed in for the first time |
+| Initiated checkout | App | "Try Now" was tapped |
+| StartTrial | App | A real (not test) ₹3 trial payment succeeded |
+| Purchase | Backend (`cashfree-webhook`) | A real ₹299 monthly debit is recorded. Needs the private rows `meta_capi_access_token` and `meta_capi_dataset_id` filled in; both are blank until someone fills them in Events Manager |
 
 ---
 
@@ -215,5 +216,6 @@ Conversion window: 30 days. Breakdown: `utm_content`. Use a date range at least 
 |---|---|
 | Server events (`Payment Succeeded` and the others) | **Live.** They start with the next real payment |
 | Reading Meta ads on the server | **Live** |
+| Server-side Meta `Purchase` for the real monthly debit (`cashfree-webhook`, built 2 Nov 2026) | **Not live.** `meta_capi_access_token`/`meta_capi_dataset_id` are blank, and the migration adding `profiles.meta_anon_id` has not been pushed |
 | `Meta Ad Attributed` and the ad fields on app events | Waiting for the next app release on Play |
 | Joining pre-sign-in and post-sign-in events into one user | **Not checked yet.** In Mixpanel: open a recent user's Activity Feed. If it shows `Install Attributed` before `OTP Verified`, it works |

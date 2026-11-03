@@ -52,6 +52,9 @@ class _RecordingBackend implements EvosBackend {
 
   @override
   Future<void> saveAttribution(Attribution attribution) async {}
+
+  @override
+  Future<void> saveMetaAnonId(String anonId) async {}
 }
 
 /// A platform that opens instantly and never calls back, so the gateway

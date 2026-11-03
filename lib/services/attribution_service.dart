@@ -112,16 +112,15 @@ class AttributionService {
 
   /// Saves the latest ad on the signed-in user's profile when it has changed
   /// since the last save. [newSignIn] saves it whatever was saved before: the
-  /// last save may have been for another person on this phone. Skipped for
-  /// the review account, which has no server account. Never throws: a
-  /// failure is tried again later.
+  /// last save may have been for another person on this phone, and also
+  /// sends the Meta anon id (see [_syncMetaAnonId]). Skipped for the review
+  /// account, which has no server account. Never throws: a failure is tried
+  /// again later.
   Future<void> syncToServer({bool newSignIn = false}) async {
+    if (!backend.isSignedIn || store.load().reviewAccount) return;
+    if (newSignIn) await _syncMetaAnonId();
     final Attribution? latest = store.latestAttribution;
-    if (latest == null ||
-        !backend.isSignedIn ||
-        store.load().reviewAccount) {
-      return;
-    }
+    if (latest == null) return;
     final String encoded = latest.encode();
     if (!newSignIn && store.syncedAttribution == encoded) return;
     try {
@@ -129,6 +128,19 @@ class AttributionService {
       await store.saveSyncedAttribution(encoded);
     } catch (error) {
       if (kDebugMode) debugPrint('[attribution] Not saved: $error');
+    }
+  }
+
+  /// Sends the Facebook SDK's per-app-install GUID once per sign-in, so the
+  /// backend can match a later server-side Meta Purchase event (the real
+  /// monthly debit) to the ad that drove the install. Never throws.
+  Future<void> _syncMetaAnonId() async {
+    final String? anonId = await fetchMetaAnonId();
+    if (anonId == null) return;
+    try {
+      await backend.saveMetaAnonId(anonId);
+    } catch (error) {
+      if (kDebugMode) debugPrint('[attribution] Meta anon id not saved: $error');
     }
   }
 

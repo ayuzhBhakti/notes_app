@@ -24,6 +24,10 @@ export interface ResolvedAppConfig {
   customerEmailDomain: string;
   /** Mixpanel project token for server events (private row mixpanel_token). Empty: none sent. */
   mixpanelToken: string;
+  /** Meta Conversions API access token for the linked dataset (private row meta_capi_access_token). Empty: no server-side Meta Purchase event sent. */
+  metaCapiAccessToken: string;
+  /** The Meta dataset id the app is linked to in Events Manager (private row meta_capi_dataset_id). */
+  metaCapiDatasetId: string;
 }
 
 export function createServiceClient(): SupabaseClient {
@@ -152,5 +156,7 @@ export async function loadAppConfig(
     planName: resolve(map, "plan_name") || `${appName} Premium Monthly`,
     customerEmailDomain: resolve(map, "customer_email_domain"),
     mixpanelToken: resolve(map, "mixpanel_token"),
+    metaCapiAccessToken: resolve(map, "meta_capi_access_token"),
+    metaCapiDatasetId: resolve(map, "meta_capi_dataset_id"),
   };
 }

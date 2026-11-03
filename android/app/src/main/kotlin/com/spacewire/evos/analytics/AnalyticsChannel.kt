@@ -9,8 +9,6 @@ import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import org.json.JSONObject
-import java.math.BigDecimal
-import java.util.Currency
 
 /**
  * Receives every analytics call from lib/services/analytics.dart and hands it to Mixpanel or the
@@ -36,6 +34,15 @@ class AnalyticsChannel private constructor(private val application: Application)
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
+        if (call.method == "metaAnonId") {
+            // Facebook's own per-app-install GUID, so a server-side Meta event sent while the app is
+            // closed (the monthly auto-renewal) can still be matched to the ad that drove the install.
+            val anonId = runCatching {
+                if (MetaSdk.isReady) AppEventsLogger.getAnonymousAppDeviceGUID(application) else null
+            }.onFailure { Log.w(TAG, "metaAnonId failed", it) }.getOrNull()
+            result.success(anonId)
+            return
+        }
         val sent = runCatching { handle(call) }
             .onFailure { Log.w(TAG, "${call.method} failed", it) }
             .getOrDefault(false)
@@ -81,14 +88,15 @@ class AnalyticsChannel private constructor(private val application: Application)
                 planParams(call),
             )
         }
-        "metaSubscribe" -> meta {
-            val params = planParams(call)
-            logPurchase(
-                BigDecimal.valueOf(call.argument<Number>("amount")!!.toDouble()),
-                Currency.getInstance(call.argument<String>("currency")!!),
-                params,
+        // The ₹3 trial authorisation. Meta's dedicated trial-start event, not Purchase: that is
+        // reserved for the real ₹299 monthly debit, sent server-side once it is actually charged
+        // (see supabase/functions/_shared/meta_capi.ts), so a trial is never double-counted as revenue.
+        "metaStartTrial" -> meta {
+            logEvent(
+                AppEventsConstants.EVENT_NAME_START_TRIAL,
+                call.argument<Number>("amount")!!.toDouble(),
+                planParams(call),
             )
-            logEvent(AppEventsConstants.EVENT_NAME_SUBSCRIBE, params)
         }
         else -> null
     }

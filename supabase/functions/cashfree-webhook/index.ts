@@ -23,6 +23,7 @@ import {
   previousPaymentStatus,
   trackUserEvent,
 } from "../_shared/mixpanel.ts";
+import { trackMetaPurchase } from "../_shared/meta_capi.ts";
 
 const FN = "cashfree-webhook";
 
@@ -117,7 +118,7 @@ Deno.serve(async (req) => {
 
     const { data: profile } = await serviceClient
       .from("profiles")
-      .select("phone, cashfree_subscription_id, subscription_status")
+      .select("phone, cashfree_subscription_id, subscription_status, meta_anon_id")
       .eq("id", userId)
       .maybeSingle();
     const phone: string | null = profile?.phone ?? null;
@@ -168,6 +169,18 @@ Deno.serve(async (req) => {
             via: "webhook",
           },
         });
+        // The real monthly debit only: the ₹3 trial is reported to Meta from the app itself, as
+        // StartTrial, not Purchase (AnalyticsChannel.kt), so it is never sent twice as revenue.
+        if (planType === "monthly") {
+          await trackMetaPurchase(FN, {
+            accessToken: config.metaCapiAccessToken,
+            datasetId: config.metaCapiDatasetId,
+            anonId: profile?.meta_anon_id ?? null,
+            amount: recordedAmount,
+            currency: "INR",
+            eventId: paymentId,
+          });
+        }
       }
     }
 

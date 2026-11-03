@@ -216,8 +216,11 @@ class Analytics {
 
   /// [amount] is what was authorised today, the trial price. [simulated] is
   /// on the Mixpanel event so test-mode purchases can be filtered out. Meta
-  /// is told about real purchases only: its Purchase event carries revenue
-  /// that ad delivery is optimised on, and a simulated payment is not revenue.
+  /// is told about a real trial only, as its `StartTrial` event, which
+  /// carries revenue that ad delivery is optimised on: a simulated payment is
+  /// not revenue. The later real monthly debit is a separate Meta Purchase
+  /// event, sent by the backend while the app is closed (see
+  /// `supabase/functions/_shared/meta_capi.ts`), so it is never sent from here.
   void subscriptionSucceeded({
     required String planId,
     required double amount,
@@ -231,7 +234,7 @@ class Analytics {
       'simulated': simulated,
     });
     if (simulated) return;
-    _client.send('metaSubscribe', <String, Object?>{
+    _client.send('metaStartTrial', <String, Object?>{
       'plan_id': planId,
       'amount': amount,
       'currency': currency,
@@ -284,4 +287,20 @@ class Analytics {
     'metaCompleteRegistration',
     <String, Object?>{'method': method},
   );
+}
+
+/// Reads the Facebook SDK's per-app-install GUID, Meta's `anon_id`, so the
+/// backend can match a later server-side Purchase event (the real monthly
+/// debit, sent while the app is closed) to the ad that drove the install.
+/// Null off Android, before the Facebook SDK has a key, or when nothing
+/// answers the channel (every widget test).
+Future<String?> fetchMetaAnonId() async {
+  if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return null;
+  try {
+    return await const MethodChannel(
+      'com.spacewire.evos/analytics',
+    ).invokeMethod<String>('metaAnonId');
+  } catch (_) {
+    return null;
+  }
 }

@@ -148,7 +148,7 @@ Sent by the edge functions in [supabase/functions/](../supabase/functions/) thro
 
 | Event | When it fires | Properties |
 |-------|---------------|------------|
-| `Payment Succeeded` | A payment is recorded for the first time in `subscription_payments`: by `cashfree-webhook`, or by `verify-cashfree-subscription` when the app asked first. A repeated webhook sends nothing (and `$insert_id` is the payment id, so Mixpanel drops a duplicate too) | `payment_type`: `trial` (the ₹3 authorisation), `auto_renewal` (a monthly debit), `retry` (a debit after a failed one on the same mandate). There is no `manual` in Evos. `plan_type`: `trial` or `monthly`. `amount`, `currency` (`INR`), `via`: `webhook` or `verify` |
+| `Payment Succeeded` | A payment is recorded for the first time in `subscription_payments`: by `cashfree-webhook`, or by `verify-cashfree-subscription` when the app asked first. A repeated webhook sends nothing (and `$insert_id` is the payment id, so Mixpanel drops a duplicate too). When it is the real monthly debit (`plan_type` `monthly`), `cashfree-webhook` also sends Meta a server-side Purchase event (see "Facebook (Meta) events" below) | `payment_type`: `trial` (the ₹3 authorisation), `auto_renewal` (a monthly debit), `retry` (a debit after a failed one on the same mandate). There is no `manual` in Evos. `plan_type`: `trial` or `monthly`. `amount`, `currency` (`INR`), `via`: `webhook` or `verify` |
 | `Payment Failed` | `cashfree-webhook` records a failed debit | `payment_type` (`auto_renewal` or `retry`), `plan_type`, `amount`, `currency`, `via` |
 | `Subscription Cancelled` | Cashfree reports the mandate cancelled or paused (the mandate on the profile only) | `cashfree_status` |
 | `Subscription Expired` | Cashfree reports the mandate expired or completed | `cashfree_status` |
@@ -169,14 +169,19 @@ A person identified by phone sign-in has a profile with these properties only: n
 
 ## Facebook (Meta) events
 
-| Event | When it fires | Parameters |
-|-------|---------------|------------|
-| App install, app open (automatic) | Sent by the SDK itself once it is configured | The SDK's own |
-| `fb_mobile_complete_registration` | A verified phone code that created the account | `fb_registration_method`: `phone` |
-| `fb_mobile_initiated_checkout` | "Try Now" is tapped with a UPI app chosen | `fb_content_id` (the plan), `fb_currency`, and the price as the value |
-| `fb_mobile_purchase` and `Subscribe` | A **real** payment succeeded | `fb_content_id`, `fb_currency`, the price |
+The ₹3 trial and the ₹299 monthly debit are two separate Meta events, sent from two different places, so a trial is never double-counted as Purchase revenue: the app logs the trial client-side the moment it is authorised, and the backend logs the real monthly debit server-side, since the app is closed when it happens.
 
-**A simulated payment sends no purchase to Facebook.** Its Purchase event carries revenue that ad delivery is optimised on, and a simulated payment is not revenue. A build with a Supabase project uses the Cashfree gateway, whose `isSimulated` is false, and sends both events with the trial price as the value.
+| Event | Sent by | When it fires | Parameters |
+|-------|---------|----------------|------------|
+| App install, app open (automatic) | The SDK itself | Once it is configured | The SDK's own |
+| `fb_mobile_complete_registration` | App (`AnalyticsChannel.kt`) | A verified phone code that created the account | `fb_registration_method`: `phone` |
+| `fb_mobile_initiated_checkout` | App | "Try Now" is tapped with a UPI app chosen | `fb_content_id` (the plan), `fb_currency`, and the price as the value |
+| `StartTrial` | App, method channel call `metaStartTrial` | A **real** ₹3 trial authorisation succeeds | `fb_content_id`, `fb_currency`, the trial price as `_valueToSum` |
+| `Purchase` | Backend, `cashfree-webhook` via `_shared/meta_capi.ts` (Conversions API for App Events, dataset endpoint) | A real monthly debit (`plan_type` `monthly`) is recorded for the first time | `currency` (`INR`), `value` (the recurring amount), `user_data.anon_id` (see below), `event_id` the Cashfree payment id (de-dupes a repeated webhook) |
+
+**A simulated payment sends nothing to Facebook.** Both events carry revenue that ad delivery is optimised on, and a simulated payment is not revenue: `subscriptionSucceeded(simulated: true)` skips `metaStartTrial`, and the webhook only ever sees a real Cashfree payment.
+
+**Matching the server-side Purchase event to the install.** Meta needs an identifier to attribute the ₹299 debit back to the ad, since the request comes from the backend, not the device. The app sends the Facebook SDK's own per-app-install GUID (`AppEventsLogger.getAnonymousAppDeviceGUID`, method channel call `metaAnonId`) to `profiles.meta_anon_id` once per sign-in (`AttributionService.syncToServer(newSignIn: true)`, RPC `save_meta_anon_id`); `cashfree-webhook` reads it back as `user_data.anon_id`. No device advertising id is collected, so there is no new permission or consent prompt. Needs two private `app_config` rows to actually send: `meta_capi_access_token` and `meta_capi_dataset_id` (see [09-deep-link-onboarding.md](09-deep-link-onboarding.md#settings-the-app_config-table)); blank (the default after migration `20261102120000`) means `trackMetaPurchase` is a no-op.
 
 ## The funnels
 
@@ -191,12 +196,13 @@ Every new user:
 - **With the real keys (2026-10-21, test phone, test-mode debug build), both services accepted every event sent.** Checked in logcat, not inside Mixpanel or Events Manager:
   - Facebook confirmed the App ID and client token belong together (a Graph API read answered with the app name "evos").
   - Mixpanel: `App Opened`, `Install Attributed`, `Deep Link Opened`, `Phone Entry Viewed`, `OTP Requested`, `OTP Verified`, `Paywall Viewed`, `Checkout Started`, `Subscription Succeeded` (`simulated: true`), `Maintenance Viewed` (since replaced by `Web Page Viewed`), `Signed Out`, and the `identify` profile update. `/track` and `/engage` both answered `status: 1`.
-  - Facebook: `fb_sdk_initialize`, `MOBILE_APP_INSTALL` (first launch after clearing data), `fb_mobile_activate_app` and `fb_mobile_initiated_checkout`, each answered `success: true`. `metaSubscribe` was correctly skipped for the simulated payment. `metaCompleteRegistration` did not fire, because test mode's `debug-user` is never a new user.
+  - Facebook: `fb_sdk_initialize`, `MOBILE_APP_INSTALL` (first launch after clearing data), `fb_mobile_activate_app` and `fb_mobile_initiated_checkout`, each answered `success: true`. `metaStartTrial` (named `metaSubscribe` before 2026-11-02) was correctly skipped for the simulated payment. `metaCompleteRegistration` did not fire, because test mode's `debug-user` is never a new user.
   - On the first launch after install the SDK logs `GraphRequest can't be used when Facebook SDK isn't fully initialized` about five times (see [05-setup-and-build.md](05-setup-and-build.md#logcat-errors-that-are-expected)). Harmless: the same launch then fetched the SDK settings and sent the install.
 - Debug builds log every Facebook request and App Events flush (tags `FacebookSDK.Request`, `FacebookSDK.Response`, `FacebookSDK.AppEvents`), as they already did for Mixpanel (`MixpanelAPI.*`). Logcat cuts long lines at about 4 KB, so a Mixpanel batch's event list looks truncated; the `raw size` line shows the whole batch went.
 - Events still queued when the app is killed are kept on the device and sent on the next launch. Maestro's `clearState` deletes them, so a flow that ends with it loses its last minute of events.
 - With throwaway dummy keys (2026-10-13, test phone), the earlier onboarding flow reached both SDKs. **The events were then changed** (the details-form events were replaced by the phone and code events) and that check has not been repeated: the current onboarding events are covered by widget tests in [analytics_test.dart](../test/analytics_test.dart) only.
-- A real (not simulated) `Subscription Succeeded`, and Facebook's purchase events, have never been sent: no real payment has been made.
+- A real (not simulated) `Subscription Succeeded` and `StartTrial` have never been checked against Facebook directly (only in logcat with dummy keys, 2026-10-13), and have not shipped: the app side is uncommitted.
+- **The server-side Meta `Purchase` event was hand-verified live on 2026-11-02** with a manual POST carrying a Meta test event code, after `meta_capi_access_token`/`meta_capi_dataset_id` were filled in by the owner: it caught a real bug (Meta refused the first attempt, HTTP 400 `error_subcode 2804043`, because `app_data.extinfo`'s OS-version slot was blank, which Meta's validator requires non-empty) and, once fixed (a placeholder OS version added) and `cashfree-webhook` redeployed (v5), returned `200` with `events_received: 1`. The test event code did not attach to an active Test Events session, so this one verification call landed as ordinary (non-test) data in the dataset — a single synthetic ₹299 event with a fake `anon_id` that matches no real install. Still not checked: a real Cashfree monthly debit actually reaching this code path end to end, and whether Meta's anon-id-only matching attributes the event to an ad at all.
 - **`Web Page Viewed`, `Web Page Failed` and `Review Account Signed In` (2026-10-22) have not run on a phone.** The first and last are covered by widget tests; `Web Page Failed` needs a real WebView.
 - **The notes events run only for the review account's local notes** (anonymous id). They have not been checked on a phone.
 
@@ -212,3 +218,5 @@ Every new user:
 - There is no event for a mobile number that fails validation, none for an error on the notes list, and none when a subscription lapses and the person is returned to the paywall.
 - Server events are sent only once the `mixpanel_token` row is filled. Not yet run against the live project.
 - No consent screen. The Facebook SDK collects the advertising ID as soon as it is configured. Check what the markets the app ships to require before adding real keys.
+- The server-side Meta Purchase event matches on `profiles.meta_anon_id` alone (no device advertising id is sent for it); match quality depends on how well Meta's anon_id-only matching performs, which has not been assessed. `app_data.extinfo` (the Android device descriptor Meta's docs ask for) is sent with only the package name and a placeholder OS version filled in, since the backend has no other device details for an app that is closed; this may reduce match quality further.
+- `meta_anon_id` is only sent on sign-in going forward (migration `20261102120000`); nobody already signed in before that date has it until they sign in again (log out and back in, or a fresh install).

@@ -106,7 +106,7 @@ void main() {
       expect(recorder.otherMethods, isEmpty);
     });
 
-    test('a real purchase is reported to Meta', () {
+    test('a real trial authorisation is reported to Meta as StartTrial', () {
       final Recorder recorder = Recorder();
       Analytics(recorder).subscriptionSucceeded(
         planId: 'yearly',
@@ -115,7 +115,7 @@ void main() {
         simulated: false,
       );
 
-      expect(recorder.otherMethods, <String>['metaSubscribe']);
+      expect(recorder.otherMethods, <String>['metaStartTrial']);
       expect(recorder.calls.last.$2, <String, Object?>{
         'plan_id': 'yearly',
         'amount': 1499.0,
@@ -244,7 +244,7 @@ void main() {
         'identify',
         'metaCompleteRegistration',
         'metaInitiateCheckout',
-        'metaSubscribe',
+        'metaStartTrial',
       ]);
     });
 
@@ -262,7 +262,7 @@ void main() {
         h.recorder.properties('Subscription Succeeded')['simulated'],
         true,
       );
-      expect(h.recorder.otherMethods, isNot(contains('metaSubscribe')));
+      expect(h.recorder.otherMethods, isNot(contains('metaStartTrial')));
     });
 
     testWidgets('the backend plan id and price are what is reported',
@@ -399,7 +399,7 @@ void main() {
 
       expect(h.recorder.events.last, 'Web Page Viewed');
       expect(h.recorder.events, isNot(contains('Subscription Succeeded')));
-      expect(h.recorder.otherMethods, isNot(contains('metaSubscribe')));
+      expect(h.recorder.otherMethods, isNot(contains('metaStartTrial')));
     });
 
     // The web page has no Log out since 2026-10-31; the review account's

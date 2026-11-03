@@ -88,6 +88,8 @@ class FakeBackend implements EvosBackend {
   BackendError? attributionError;
   final List<String> decodedReferrers = <String>[];
   final List<Attribution> savedAttributions = <Attribution>[];
+  BackendError? metaAnonIdError;
+  final List<String> savedMetaAnonIds = <String>[];
 
   // Long enough for a busy state to be seen, as a real call would be.
   static const Duration _delay = Duration(milliseconds: 50);
@@ -155,6 +157,12 @@ class FakeBackend implements EvosBackend {
   Future<void> saveAttribution(Attribution attribution) async {
     if (attributionError != null) throw BackendFailure(attributionError!);
     savedAttributions.add(attribution);
+  }
+
+  @override
+  Future<void> saveMetaAnonId(String anonId) async {
+    if (metaAnonIdError != null) throw BackendFailure(metaAnonIdError!);
+    savedMetaAnonIds.add(anonId);
   }
 }
 

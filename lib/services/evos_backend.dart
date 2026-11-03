@@ -114,6 +114,12 @@ abstract class EvosBackend {
   /// Saves [attribution] on the signed-in user's profile, through the
   /// `save_user_attribution` RPC (the app cannot write those columns itself).
   Future<void> saveAttribution(Attribution attribution);
+
+  /// Saves the Facebook SDK's per-app-install GUID on the signed-in user's
+  /// profile, through the `save_meta_anon_id` RPC, so a server-side Meta
+  /// Purchase event for the real monthly debit can be matched to the ad that
+  /// drove the install.
+  Future<void> saveMetaAnonId(String anonId);
 }
 
 /// The only file in the app that imports `supabase`.
@@ -381,6 +387,15 @@ class SupabaseEvosBackend implements EvosBackend {
         );
       });
 
+  @override
+  Future<void> saveMetaAnonId(String anonId) => _guard(() async {
+        await _ensureSession();
+        await _client.rpc<void>(
+          'save_meta_anon_id',
+          params: <String, Object?>{'p_anon_id': anonId},
+        );
+      });
+
   Future<void> dispose() async {
     await _authSubscription.cancel();
     await _client.dispose();
@@ -530,4 +545,7 @@ class UnconfiguredEvosBackend implements EvosBackend {
   @override
   Future<void> saveAttribution(Attribution attribution) async =>
       throw _failure;
+
+  @override
+  Future<void> saveMetaAnonId(String anonId) async => throw _failure;
 }

@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show TargetPlatform, debugDefaultTargetPlatformOverride;
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:evos/models/attribution.dart';
 import 'package:evos/models/onboarding.dart';
@@ -387,6 +389,53 @@ void main() {
       // Another person signs in on the same phone.
       await service().syncToServer(newSignIn: true);
       expect(backend.savedAttributions.length, 2);
+    });
+
+    test('a new sign-in sends the Meta anon id, for matching a later '
+        'server-side Purchase event to the ad', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      const MethodChannel channel = MethodChannel('com.spacewire.evos/analytics');
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        channel,
+        (MethodCall call) async =>
+            call.method == 'metaAnonId' ? 'anon-guid-1' : null,
+      );
+      addTearDown(() => TestDefaultBinaryMessengerBinding
+          .instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null));
+
+      await freshInstall('utm_source=whatsapp');
+      await store.saveSession('session');
+      await service().syncToServer(newSignIn: true);
+
+      expect(backend.savedMetaAnonIds, <String>['anon-guid-1']);
+    });
+
+    test('a plain refresh (not a new sign-in) never asks for the anon id',
+        () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      const MethodChannel channel = MethodChannel('com.spacewire.evos/analytics');
+      final List<String> methodsCalled = <String>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (MethodCall call) async {
+        methodsCalled.add(call.method);
+        return null;
+      });
+      addTearDown(() => TestDefaultBinaryMessengerBinding
+          .instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null));
+
+      await freshInstall('utm_source=whatsapp');
+      await store.saveSession('session');
+      await service().start();
+
+      expect(methodsCalled, isNot(contains('metaAnonId')));
+      expect(backend.savedMetaAnonIds, isEmpty);
     });
 
     test('a Meta ad decoded late does not replace a newer link as the latest',
